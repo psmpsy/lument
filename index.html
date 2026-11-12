@@ -92,6 +92,12 @@
   .seltable tbody tr.sel td { background:var(--acc-soft); }
   tr.ret td { background:var(--red-soft) !important; }
   tr.ret td:first-child { box-shadow:inset 3px 0 0 var(--red); }
+  tr.cxl td { color:var(--mut); }
+  tr.cxl td .linkbtn { color:var(--mut); text-decoration:line-through; }
+  tr.age1 td:first-child { box-shadow:inset 3px 0 0 #e0a458; }
+  tr.age2 td:first-child { box-shadow:inset 3px 0 0 var(--red); }
+  td.age1 { color:#b7791f; font-weight:600; } td.age2 { color:var(--red); font-weight:600; }
+  .subacts { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; }
   tr.sub > td { background:#fcfaf6; padding:0 12px 12px 44px; }
   tr.sub table { font-size:13px; background:var(--card); border:1px solid var(--line); border-radius:10px; }
   .linkbtn { border:0; background:none; padding:0; cursor:pointer; color:var(--acc); font-weight:600; text-decoration:underline; text-underline-offset:3px; font-variant-numeric:tabular-nums; }
@@ -155,6 +161,7 @@
     <button data-tab="stock"><span data-i18n="tabStock"></span><span class="cnt" id="cntStock"></span></button>
     <button data-tab="done"><span data-i18n="tabDone"></span><span class="cnt" id="cntDone"></span></button>
     <button data-tab="ref"><span data-i18n="tabRef"></span><span class="cnt" id="cntRef"></span></button>
+    <button data-tab="month"><span data-i18n="tabMonth"></span></button>
     <button data-tab="input"><span data-i18n="tabInput"></span></button>
   </nav>
 
@@ -179,6 +186,7 @@
       </div>
       <div class="panel" id="exportPanel" hidden>
         <span data-i18n="expDate"></span> <input type="date" id="expDate">
+        <span data-i18n="expRef"></span> <input type="text" id="expRef" maxlength="100">
         <span id="exportPanelSum"></span>
         <button class="btn" id="exportGo" data-i18n="confirmExport"></button>
         <button class="btn ghost" id="exportCancel" data-i18n="cancel"></button>
@@ -207,6 +215,14 @@
       <div class="filters" id="fRef"></div>
       <div class="selbar"><span class="sum" id="refSum"></span><span class="grow"></span><button class="btn ghost sm" id="refXlsx" data-i18n="xlsx"></button></div>
       <div class="scroll"><table id="refTable"></table></div>
+    </div>
+  </section>
+
+  <!-- 월별 요약 -->
+  <section id="tab-month" hidden>
+    <div class="card">
+      <div class="selbar"><span class="sum muted" data-i18n="monthHelp"></span><span class="grow"></span><button class="btn ghost sm" id="monthXlsx" data-i18n="xlsx"></button></div>
+      <div class="scroll"><table id="monthTable"></table></div>
     </div>
   </section>
 
@@ -299,7 +315,7 @@ const I18N = {
     status: '상태', exportDate: '수출일', row: '엑셀 행', items: '상품', search: '상품명 검색', from: '부터', to: '까지',
     sort: '정렬', oldFirst: '오래된 구매일 먼저', newFirst: '최근 구매일 먼저', all: '전체', none: '없음', selectAll: '전체 선택', clear: '선택 해제',
     catAll: '카테고리 전체', catN: n => `카테고리 ${n}개`,
-    st: { stock: '재고', exported: '수출 완료', returned: '반품' },
+    st: { stock: '재고', exported: '수출 완료', returned: '반품', canceled: '취소됨' },
     payStatus: '결제건 상태', psAll: '전체', psStock: '재고 있음', psDone: '모두 수출', psRet: '반품', psNone: '상품 정보 없음',
     noItems: '상품 정보 없음', expandHint: '금액을 누르면 상품이 펼쳐져요',
     paySum: (n, a) => `결제건 ${n}건 · 합계 ₩${a}`,
@@ -335,6 +351,16 @@ const I18N = {
     restoreAsk: (p, i, r) => `백업으로 전체 데이터를 복원할까요?\n지금 서버 데이터가 모두 지워지고 백업 내용(결제건 ${p} · 상품 ${i} · 환불 ${r})으로 바뀌어요.`,
     restored: '복원했어요', nothing: '내보낼 데이터가 없어요',
     shPay: '결제건·상품', shRef: '반품·환불', shStock: '재고', shDone: '수출 완료', fileName: '구매수출',
+    tabMonth: '월별 요약', shMonth: '월별 요약', monthHelp: '구매·반품은 구매일·반품일 기준, 수출은 수출일 기준, 재고는 그 달 말일 기준이에요. 취소된 결제건은 빠져요.',
+    month: '월', mPayN: '구매 건수', mPay: '구매액', mRet: '반품 환불액', mNet: '순구매액', mExp: '수출액', mExpW: '수출 중량(kg)', mStock: '월말 재고 금액',
+    expRef: '송장·B/L 번호(선택)', exportRef: '수출 번호', refSearch: '수출 번호 검색',
+    psCxl: '취소됨', cxlTag: d => `취소 ${d}`, cancelPay: '이 결제건 취소', uncancel: '취소 되돌리기',
+    cancelPrompt: '취소 사유를 적어주세요 (예: 금액 잘못 입력, 다시 입력함).\n기록은 지워지지 않고 "취소됨"으로 남아요.', cancelNeedNote: '취소 사유를 적어야 취소할 수 있어요',
+    cancelBlocked: '이미 수출된 상품이 있거나 반품된 결제건은 취소할 수 없어요', uncancelAsk: '이 결제건의 취소를 되돌려 다시 재고에 넣을까요?',
+    undoReturn: '반품 취소', undoReturnAsk: (d, a) => `${d} 결제건(₩${a})의 반품 처리를 취소할까요?\n환불 거래는 다시 "확인 필요"로 돌아가요.`,
+    ageCol: '경과일', days: n => `${n}일`, sAge: (a, b) => `30일↑ ${a}건 · 60일↑ ${b}건`, sAgeT: '오래된 재고',
+    dupTitle: n => `중복 의심 ${n}건: 같은 구매일·금액의 결제건이 이미 있는데 이번 파일에는 그 행이 그대로 없어요. 엑셀에서 행을 고친 경우일 수 있어요.`,
+    dupRow: (r, d, a, o) => `${r}행 ${d} ₩${a} ↔ 기존 ${o}`, dupInclude: '중복 의심 건도 가져오기', manualEntry: '직접 입력',
   },
   zh: {
     title: '采购·出口·库存管理', backup: '完整备份', restore: '恢复备份', logout: '退出登录',
@@ -347,7 +373,7 @@ const I18N = {
     status: '状态', exportDate: '出口日期', row: 'Excel 行', items: '商品', search: '搜索品名', from: '起', to: '止',
     sort: '排序', oldFirst: '采购日期从早到晚', newFirst: '采购日期从晚到早', all: '全部', none: '无', selectAll: '全选', clear: '取消选择',
     catAll: '全部类别', catN: n => `已选 ${n} 个类别`,
-    st: { stock: '库存', exported: '已出口', returned: '退货' },
+    st: { stock: '库存', exported: '已出口', returned: '退货', canceled: '已取消' },
     payStatus: '付款状态', psAll: '全部', psStock: '有库存', psDone: '全部已出口', psRet: '退货', psNone: '无商品信息',
     noItems: '无商品信息', expandHint: '点击金额可展开商品',
     paySum: (n, a) => `付款 ${n} 笔 · 合计 ₩${a}`,
@@ -383,6 +409,16 @@ const I18N = {
     restoreAsk: (p, i, r) => `要用备份恢复全部数据吗？\n服务器上的当前数据将全部删除，并替换为备份内容（付款 ${p} · 商品 ${i} · 退款 ${r}）。`,
     restored: '已恢复', nothing: '没有可导出的数据',
     shPay: '付款·商品', shRef: '退货·退款', shStock: '库存', shDone: '已出口', fileName: '采购出口',
+    tabMonth: '月度汇总', shMonth: '月度汇总', monthHelp: '采购·退货按采购日期·退货日期，出口按出口日期，库存按当月最后一天统计。已取消的付款不计入。',
+    month: '月份', mPayN: '采购笔数', mPay: '采购额', mRet: '退货退款额', mNet: '净采购额', mExp: '出口额', mExpW: '出口重量(kg)', mStock: '月末库存金额',
+    expRef: '运单·提单号（可选）', exportRef: '出口编号', refSearch: '搜索出口编号',
+    psCxl: '已取消', cxlTag: d => `取消 ${d}`, cancelPay: '取消此付款', uncancel: '撤销取消',
+    cancelPrompt: '请填写取消原因（例如：金额录错，已重新录入）。\n记录不会删除，会保留为“已取消”。', cancelNeedNote: '必须填写取消原因才能取消',
+    cancelBlocked: '已有商品出口或已退货的付款不能取消', uncancelAsk: '撤销此付款的取消并重新计入库存吗？',
+    undoReturn: '撤销退货', undoReturnAsk: (d, a) => `撤销 ${d} 付款（₩${a}）的退货处理吗？\n该退款交易将恢复为“需要确认”。`,
+    ageCol: '已过天数', days: n => `${n}天`, sAge: (a, b) => `30天以上 ${a} 条 · 60天以上 ${b} 条`, sAgeT: '积压库存',
+    dupTitle: n => `疑似重复 ${n} 笔：已有相同采购日期·金额的付款，但本次文件中没有原来的那一行。可能是在 Excel 中修改过该行。`,
+    dupRow: (r, d, a, o) => `第 ${r} 行 ${d} ₩${a} ↔ 已有 ${o}`, dupInclude: '也导入疑似重复的付款', manualEntry: '手动录入',
   },
 };
 let lang = (() => { try { return localStorage.getItem('buyexport.lang') || 'ko'; } catch { return 'ko'; } })();
@@ -403,7 +439,8 @@ const sb = supabase.createClient('https://hymiapuytoelwerwhejj.supabase.co',
 /* ---------- data ---------- */
 let P = [], I = [], F = [];           // payments, items, refunds (raw rows)
 let payById = new Map(), itemsByPay = new Map(), refByPay = new Map();
-const status = it => payById.get(it.payment_id)?.returned_on ? 'returned' : it.exported_on ? 'exported' : 'stock';
+const status = it => { const p = payById.get(it.payment_id); return p?.canceled_on ? 'canceled' : p?.returned_on ? 'returned' : it.exported_on ? 'exported' : 'stock'; };
+const daysSince = d => Math.floor((Date.parse(today()) - Date.parse(d)) / 864e5);
 
 async function fetchAll(table, cols) {   // PostgREST returns max 1000 rows per request
   const out = [];
@@ -415,8 +452,8 @@ async function fetchAll(table, cols) {   // PostgREST returns max 1000 rows per 
 }
 async function loadAll() {
   [P, I, F] = await Promise.all([
-    fetchAll('payments', 'id,pay_date,amount,note,src_key,src_row,returned_on'),
-    fetchAll('items', 'id,payment_id,name,qty,price,weight,exported_on'),
+    fetchAll('payments', 'id,pay_date,amount,note,src_key,src_row,returned_on,canceled_on,cancel_note'),
+    fetchAll('items', 'id,payment_id,name,qty,price,weight,exported_on,export_ref'),
     fetchAll('refunds', 'id,tx_date,amount,note,src_key,src_row,payment_id,return_date'),
   ]);
   P.forEach(p => { p.amount = +p.amount; });
@@ -434,7 +471,7 @@ const reload = async () => { await busy(loadAll); renderAll(); };
 const flt = {
   pay: { from: '', to: '', q: '', cats: new Set(), ps: 'all' },
   stock: { from: '', to: '', q: '', cats: new Set(), sort: 'asc' },
-  done: { from: '', to: '', ef: '', et: '', q: '', cats: new Set(), sort: 'desc' },
+  done: { from: '', to: '', ef: '', et: '', q: '', ref: '', cats: new Set(), sort: 'desc' },
   ref: { from: '', to: '', rs: 'all' },
 };
 const sel = { stock: new Set(), done: new Set() };
@@ -449,11 +486,12 @@ function filterBar(el, key, parts) {
     if (p === 'date') return date('from', 'to', t.payDate);
     if (p === 'edate') return date('ef', 'et', t.exportDate);
     if (p === 'q') return `<label class="f"><span>${t.name}</span><input type="search" data-k="q" value="${esc(f.q)}" placeholder="${t.search}"></label>`;
+    if (p === 'ref') return `<label class="f"><span>${t.exportRef}</span><input type="search" data-k="ref" value="${esc(f.ref)}" placeholder="${t.refSearch}"></label>`;
     if (p === 'cats') return `<div class="f"><span>${t.cat}</span><details class="multi"><summary>${f.cats.size ? t.catN(f.cats.size) : t.catAll}</summary><div class="opts">
         <div class="tools"><button type="button" class="btn ghost sm" data-cats="all">${t.selectAll}</button><button type="button" class="btn ghost sm" data-cats="none">${t.clear}</button></div>
         ${cats().map(c => `<label><input type="checkbox" value="${esc(c)}" ${f.cats.has(c) ? 'checked' : ''}> ${esc(catLabel(c))}</label>`).join('')}</div></details></div>`;
     if (p === 'sort') return `<label class="f"><span>${t.sort}</span><select data-k="sort"><option value="asc" ${f.sort === 'asc' ? 'selected' : ''}>${t.oldFirst}</option><option value="desc" ${f.sort === 'desc' ? 'selected' : ''}>${t.newFirst}</option></select></label>`;
-    if (p === 'ps') return `<label class="f"><span>${t.payStatus}</span><select data-k="ps">${[['all', t.psAll], ['stock', t.psStock], ['done', t.psDone], ['ret', t.psRet], ['none', t.psNone]].map(([v, l]) => `<option value="${v}" ${f.ps === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+    if (p === 'ps') return `<label class="f"><span>${t.payStatus}</span><select data-k="ps">${[['all', t.psAll], ['stock', t.psStock], ['done', t.psDone], ['ret', t.psRet], ['cxl', t.psCxl], ['none', t.psNone]].map(([v, l]) => `<option value="${v}" ${f.ps === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
     if (p === 'rs') return `<label class="f"><span>${t.refStatus}</span><select data-k="rs">${[['all', t.rfAll], ['pend', t.rfPend], ['done', t.rfDone]].map(([v, l]) => `<option value="${v}" ${f.rs === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
   }).join('');
   const open = el.querySelector('details.multi')?.open;
@@ -494,15 +532,17 @@ function payList() {
     if (!inRange(p.pay_date, f.from, f.to)) return false;
     const its = itemsByPay.get(p.id) || [];
     if ((f.q || f.cats.size) && !its.some(i => itemMatch(i, f))) return false;
+    if (f.ps === 'cxl') return !!p.canceled_on;
     if (f.ps === 'ret') return !!p.returned_on;
     if (f.ps === 'none') return !its.length;
-    if (f.ps === 'stock') return !p.returned_on && its.some(i => !i.exported_on);
-    if (f.ps === 'done') return !p.returned_on && its.length && its.every(i => i.exported_on);
+    if (f.ps === 'stock') return its.some(i => status(i) === 'stock');
+    if (f.ps === 'done') return !p.returned_on && !p.canceled_on && its.length && its.every(i => i.exported_on);
     return true;
   }).sort((a, b) => b.pay_date.localeCompare(a.pay_date) || b.id - a.id);
 }
 function payStatusCell(p) {
   const t = T(), its = itemsByPay.get(p.id) || [];
+  if (p.canceled_on) return `<span class="tag">${t.cxlTag(p.canceled_on)}</span> <span class="muted">${esc(p.cancel_note)}</span>`;
   if (p.returned_on) { const r = refByPay.get(p.id); return `<span class="tag ret">${t.retTag(p.returned_on)}</span>${r ? ` <span class="muted">${t.refundOf(won(-r.amount))}</span>` : ''}`; }
   if (!its.length) return `<span class="tag">${t.noItems}</span>`;
   const s = its.filter(i => !i.exported_on).length, e = its.length - s;
@@ -510,52 +550,64 @@ function payStatusCell(p) {
 }
 function itemRowsTable(p) {
   const t = T(), its = itemsByPay.get(p.id) || [];
-  if (!its.length) return `<p class="muted" style="margin:8px 0 0">${t.noItems}${p.note ? ' · ' + esc(p.note) : ''}</p>`;
-  return `<table><thead><tr><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th><th>${t.status}</th><th>${t.exportDate}</th></tr></thead><tbody>` +
-    its.map(i => { const s = status(i); return `<tr><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td><td><span class="tag ${s === 'stock' ? 'stock' : s === 'exported' ? 'exp' : 'ret'}">${t.st[s]}</span></td><td>${i.exported_on || ''}</td></tr>`; }).join('') + '</tbody></table>';
+  const acts = p.canceled_on ? `<button class="btn ghost sm" data-uncancel="${p.id}">${t.uncancel}</button>`
+    : !p.returned_on && !its.some(i => i.exported_on) ? `<button class="btn danger sm" data-cancel="${p.id}">${t.cancelPay}</button>` : '';
+  const actRow = acts ? `<div class="subacts">${acts}</div>` : '';
+  if (!its.length) return `<p class="muted" style="margin:8px 0 0">${t.noItems}${p.note ? ' · ' + esc(p.note) : ''}</p>` + actRow;
+  return `<table><thead><tr><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th><th>${t.status}</th><th>${t.exportDate}</th><th>${t.exportRef}</th></tr></thead><tbody>` +
+    its.map(i => { const s = status(i); return `<tr><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td><td><span class="tag ${{ stock: 'stock', exported: 'exp', returned: 'ret', canceled: '' }[s]}">${t.st[s]}</span></td><td>${i.exported_on || ''}</td><td class="wrap">${esc(i.export_ref)}</td></tr>`; }).join('') + '</tbody></table>' + actRow;
 }
+async function payAction(fn) { try { await busy(fn); await reload(); } catch (err) { alert(/HAS_EXPORTED_ITEMS|NOT_CANCELABLE/.test(err.message) ? T().cancelBlocked : T().syncFail(err.message)); } }
 function renderPay(refreshBar = true) {
   const t = T();
   if (refreshBar) filterBar($('fPay'), 'pay', ['date', 'cats', 'q', 'ps']);
   const list = payList();
-  $('paySum').innerHTML = t.paySum(won(list.length), won(sumBy(list, p => p.amount))) + ` · <span class="muted">${t.expandHint}</span>`;
+  $('paySum').innerHTML = t.paySum(won(list.length), won(sumBy(list, p => p.canceled_on ? 0 : p.amount))) + ` · <span class="muted">${t.expandHint}</span>`;
   $('payTable').innerHTML = `<thead><tr><th>${t.payDate}</th><th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th class="n">${t.items}</th><th>${t.status}</th><th>${t.note}</th></tr></thead><tbody>` +
-    (list.map(p => `<tr class="${p.returned_on ? 'ret' : ''}"><td>${p.pay_date}</td><td class="n">${p.src_row ?? ''}</td>` +
+    (list.map(p => `<tr class="${p.canceled_on ? 'cxl' : p.returned_on ? 'ret' : ''}"><td>${p.pay_date}</td><td class="n">${p.src_row ?? ''}</td>` +
       `<td class="n"><button class="linkbtn" data-open="${p.id}" aria-expanded="${open.has(p.id)}">₩${won(p.amount)}</button></td>` +
       `<td class="n">${(itemsByPay.get(p.id) || []).length}</td><td>${payStatusCell(p)}</td><td class="wrap">${esc(p.note)}</td></tr>` +
       (open.has(p.id) ? `<tr class="sub"><td colspan="6">${itemRowsTable(p)}</td></tr>` : '')).join('') ||
     `<tr><td colspan="6" class="empty">${t.none}</td></tr>`) + '</tbody>';
   $('payTable').querySelectorAll('[data-open]').forEach(b => b.onclick = () => { const id = +b.dataset.open; open.has(id) ? open.delete(id) : open.add(id); renderPay(false); });
+  $('payTable').querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => {
+    const note = prompt(t.cancelPrompt); if (note === null) return;
+    if (!note.trim()) return alert(t.cancelNeedNote);
+    payAction(() => sb.rpc('cancel_payment', { pay_id: +b.dataset.cancel, note: note.trim() }).then(ok));
+  });
+  $('payTable').querySelectorAll('[data-uncancel]').forEach(b => b.onclick = () => { if (confirm(t.uncancelAsk)) payAction(() => sb.rpc('uncancel_payment', { pay_id: +b.dataset.uncancel }).then(ok)); });
 }
 $('payXlsx').onclick = () => {
   const t = T();
   const rows = payList().slice().reverse().flatMap(p => { const its = itemsByPay.get(p.id) || [], r = refByPay.get(p.id);
-    const base = { [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.note]: p.note, [t.returnDate]: p.returned_on || '', [t.refAmt]: r ? r.amount : '' };
-    return its.length ? its.map(i => ({ ...base, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight, [t.status]: t.st[status(i)], [t.exportDate]: i.exported_on || '' })) : [base]; });
+    const base = { [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.note]: p.note, [t.returnDate]: p.returned_on || '', [t.refAmt]: r ? r.amount : '', [t.psCxl]: p.canceled_on ? `${p.canceled_on} ${p.cancel_note}` : '' };
+    return its.length ? its.map(i => ({ ...base, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight, [t.status]: t.st[status(i)], [t.exportDate]: i.exported_on || '', [t.exportRef]: i.export_ref || '' })) : [base]; });
   xlsxOut(rows, t.shPay);
 };
 
 /* ---------- render: stock / exported ---------- */
 const itemList = (key) => {
   const f = flt[key], want = key === 'stock' ? 'stock' : 'exported';
-  const list = I.filter(i => status(i) === want && itemMatch(i, f) && inRange(payById.get(i.payment_id).pay_date, f.from, f.to) && (key !== 'done' || inRange(i.exported_on, f.ef, f.et)));
+  const list = I.filter(i => status(i) === want && itemMatch(i, f) && inRange(payById.get(i.payment_id).pay_date, f.from, f.to) && (key !== 'done' || (inRange(i.exported_on, f.ef, f.et) && (!f.ref || (i.export_ref || '').toLowerCase().includes(f.ref.toLowerCase())))));
   const d = i => key === 'done' && f.sort === 'desc' ? i.exported_on + payById.get(i.payment_id).pay_date : payById.get(i.payment_id).pay_date;
   return list.sort((a, b) => (f.sort === 'asc' ? 1 : -1) * (d(a).localeCompare(d(b)) || a.id - b.id));
 };
 const selTotals = (ids) => { const its = I.filter(i => ids.has(i.id)); return { n: its.length, q: sumBy(its, i => i.qty), a: sumBy(its, i => i.qty * i.price), w: sumBy(its, i => i.weight) }; };
 function itemTable(table, key, list) {
   const t = T(), done = key === 'done';
-  table.innerHTML = `<thead><tr><th><input type="checkbox" aria-label="${t.selectAll}" ${list.length && list.every(i => sel[key].has(i.id)) ? 'checked' : ''}></th>${done ? `<th>${t.exportDate}</th>` : ''}<th>${t.payDate}</th><th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th></tr></thead><tbody>` +
-    (list.map(i => { const p = payById.get(i.payment_id), on = sel[key].has(i.id);
-      return `<tr data-id="${i.id}" class="${on ? 'sel' : ''}"><td><input type="checkbox" ${on ? 'checked' : ''} aria-label="${t.pick}"></td>${done ? `<td>${i.exported_on}</td>` : ''}<td>${p.pay_date}</td><td class="n">${p.src_row ?? ''}</td><td class="n">₩${won(p.amount)}</td><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td></tr>`; }).join('') ||
-    `<tr><td colspan="${done ? 10 : 9}" class="empty">${t.none}</td></tr>`) + '</tbody>';
+  table.innerHTML = `<thead><tr><th><input type="checkbox" aria-label="${t.selectAll}" ${list.length && list.every(i => sel[key].has(i.id)) ? 'checked' : ''}></th>${done ? `<th>${t.exportDate}</th><th>${t.exportRef}</th>` : ''}<th>${t.payDate}</th>${done ? '' : `<th class="n">${t.ageCol}</th>`}<th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th></tr></thead><tbody>` +
+    (list.map(i => { const p = payById.get(i.payment_id), on = sel[key].has(i.id), age = daysSince(p.pay_date), ac = done ? '' : age >= 60 ? 'age2' : age >= 30 ? 'age1' : '';
+      return `<tr data-id="${i.id}" class="${on ? 'sel' : ''} ${ac}"><td><input type="checkbox" ${on ? 'checked' : ''} aria-label="${t.pick}"></td>${done ? `<td>${i.exported_on}</td><td class="wrap">${esc(i.export_ref)}</td>` : ''}<td>${p.pay_date}</td>${done ? '' : `<td class="n ${ac}">${t.days(won(age))}</td>`}<td class="n">${p.src_row ?? ''}</td><td class="n">₩${won(p.amount)}</td><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td></tr>`; }).join('') ||
+    `<tr><td colspan="11" class="empty">${t.none}</td></tr>`) + '</tbody>';
 }
 function renderStock(refreshBar = true) {
   const t = T();
   if (refreshBar) filterBar($('fStock'), 'stock', ['cats', 'q', 'date', 'sort']);
   const all = I.filter(i => status(i) === 'stock');
   const oldest = all.reduce((m, i) => { const d = payById.get(i.payment_id).pay_date; return !m || d < m ? d : m; }, '');
-  $('stockStats').innerHTML = [[t.sStockQty, won(sumBy(all, i => i.qty)) + ' ' + t.pcs, 1], [t.sStockAmt, '₩' + won(sumBy(all, i => i.qty * i.price))], [t.sStockW, kg(sumBy(all, i => i.weight)) + ' kg'], [t.sOldest, oldest || '—']]
+  const ages = all.map(i => daysSince(payById.get(i.payment_id).pay_date));
+  $('stockStats').innerHTML = [[t.sStockQty, won(sumBy(all, i => i.qty)) + ' ' + t.pcs, 1], [t.sStockAmt, '₩' + won(sumBy(all, i => i.qty * i.price))], [t.sStockW, kg(sumBy(all, i => i.weight)) + ' kg'], [t.sOldest, oldest || '—'],
+    [t.sAgeT, t.sAge(won(ages.filter(a => a >= 30).length), won(ages.filter(a => a >= 60).length))]]
     .map(([k, v, hl]) => `<div class="stat${hl ? ' hl' : ''}"><span>${k}</span><b>${v}</b></div>`).join('');
   const list = itemList('stock');
   itemTable($('stockTable'), 'stock', list);
@@ -568,7 +620,7 @@ function stockSelChanged(shown = $('stockTable').querySelectorAll('tbody tr[data
   if (!s.n) $('exportPanel').hidden = true;
 }
 function renderDone(refreshBar = true) {
-  if (refreshBar) filterBar($('fDone'), 'done', ['cats', 'q', 'date', 'edate', 'sort']);
+  if (refreshBar) filterBar($('fDone'), 'done', ['cats', 'q', 'ref', 'date', 'edate', 'sort']);
   const list = itemList('done');
   itemTable($('doneTable'), 'done', list);
   doneSelChanged(list.length);
@@ -588,8 +640,8 @@ $('exportGo').onclick = async () => {
   if (!ids.length) return alert(t.needSel);
   if (!confirm(t.exportAsk(won(ids.length), d))) return;
   try {
-    const n = await busy(() => sb.rpc('bulk_export', { ids, d }).then(ok));
-    sel.stock.clear(); $('exportPanel').hidden = true;
+    const n = await busy(() => sb.rpc('bulk_export', { ids, d, ref: $('expRef').value.trim() }).then(ok));
+    sel.stock.clear(); $('exportPanel').hidden = true; $('expRef').value = '';
     await reload(); alert(t.exported(won(n)));
   } catch (err) { alert(t.syncFail(err.message)); }
 };
@@ -601,7 +653,7 @@ $('doneUndo').onclick = async () => {
   catch (err) { alert(t.syncFail(err.message)); }
 };
 const itemXlsxRows = (list, done) => { const t = T(); return list.map(i => { const p = payById.get(i.payment_id);
-  return { ...(done ? { [t.exportDate]: i.exported_on } : {}), [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight }; }); };
+  return { ...(done ? { [t.exportDate]: i.exported_on, [t.exportRef]: i.export_ref || '' } : { [t.ageCol]: daysSince(p.pay_date) }), [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight }; }); };
 $('stockXlsx').onclick = () => xlsxOut(itemXlsxRows(itemList('stock'), false), T().shStock);
 $('doneXlsx').onclick = () => xlsxOut(itemXlsxRows(itemList('done'), true), T().shDone);
 
@@ -619,10 +671,12 @@ function renderRef(refreshBar = true) {
   $('refSum').textContent = t.refSum(won(F.length), won(F.filter(r => !r.payment_id).length));
   $('refTable').innerHTML = `<thead><tr><th>${t.refStatus}</th><th>${t.txDate}</th><th class="n">${t.row}</th><th class="n">${t.refAmt}</th><th>${t.note}</th><th>${t.linkedPay}</th><th>${t.returnDate}</th><th class="n">${t.diff}</th></tr></thead><tbody>` +
     (list.map(r => { const p = r.payment_id && payById.get(r.payment_id);
-      return `<tr class="${p ? '' : 'ret'}"><td>${p ? `<span class="tag exp">${t.linked}</span>` : `<button class="btn sm" data-link="${r.id}">${t.linkBtn}</button>`}</td><td>${r.tx_date}</td><td class="n">${r.src_row ?? ''}</td><td class="n">₩${won(r.amount)}</td><td class="wrap">${esc(r.note)}</td>` +
+      return `<tr class="${p ? '' : 'ret'}"><td>${p ? `<span class="tag exp">${t.linked}</span> <button class="btn ghost sm" data-unret="${p.id}">${t.undoReturn}</button>` :`<button class="btn sm" data-link="${r.id}">${t.linkBtn}</button>`}</td><td>${r.tx_date}</td><td class="n">${r.src_row ?? ''}</td><td class="n">₩${won(r.amount)}</td><td class="wrap">${esc(r.note)}</td>` +
         `<td>${p ? `${p.pay_date} · ₩${won(p.amount)}` : ''}</td><td>${r.return_date || ''}</td><td class="n">${p ? '₩' + won(p.amount + r.amount) : ''}</td></tr>`; }).join('') ||
     `<tr><td colspan="8" class="empty">${t.none}</td></tr>`) + '</tbody>';
   $('refTable').querySelectorAll('[data-link]').forEach(b => b.onclick = () => openLink(+b.dataset.link));
+  $('refTable').querySelectorAll('[data-unret]').forEach(b => b.onclick = () => { const p = payById.get(+b.dataset.unret);
+    if (confirm(t.undoReturnAsk(p.pay_date, won(p.amount)))) payAction(() => sb.rpc('undo_return', { pay_id: p.id }).then(ok)); });
   renderLink();
 }
 const lk = { from: '', to: '', match: true, pick: null, date: '' };
@@ -635,7 +689,7 @@ function openLink(id) {
 function renderLink() {
   const t = T(), r = F.find(x => x.id === linking && !x.payment_id);
   $('linkCard').hidden = !r; if (!r) return;
-  const cands = P.filter(p => !p.returned_on && inRange(p.pay_date, lk.from, lk.to) && (!lk.match || Math.abs(p.amount + r.amount) < 1))
+  const cands = P.filter(p => !p.returned_on && !p.canceled_on && inRange(p.pay_date, lk.from, lk.to) && (!lk.match || Math.abs(p.amount + r.amount) < 1))
     .sort((a, b) => b.pay_date.localeCompare(a.pay_date));
   const blocked = lk.pick && (itemsByPay.get(lk.pick) || []).some(i => i.exported_on);
   $('linkCard').innerHTML = `<h2>${t.linkTitle(r.tx_date, won(r.amount))}</h2><p class="muted">${t.linkHelp}</p>
@@ -679,25 +733,33 @@ $('xlFile').onchange = async e => {
     if (!parsed.payments.length && !parsed.refunds.length) throw new Error(t.noRows);
     const pk = new Set(P.map(p => p.src_key)), rk = new Set(F.map(r => r.src_key));
     pending = { payments: parsed.payments.filter(p => !pk.has(p.src_key)), refunds: parsed.refunds.filter(r => !rk.has(r.src_key)), warn: parsed.warn,
-      skipP: parsed.payments.filter(p => pk.has(p.src_key)).length, skipR: parsed.refunds.filter(r => rk.has(r.src_key)).length };
+      skipP: parsed.payments.filter(p => pk.has(p.src_key)).length, skipR: parsed.refunds.filter(r => rk.has(r.src_key)).length, dupOk: false };
+    // suspect = new row with same date+amount as a saved payment that this file no longer contains (row edited in Excel, or entered by hand)
+    const fileKeys = new Set(parsed.payments.map(p => p.src_key)), orphan = new Map();
+    P.filter(p => !p.canceled_on && !fileKeys.has(p.src_key)).forEach(p => { const k = p.pay_date + '|' + p.amount; (orphan.get(k) || orphan.set(k, []).get(k)).push(p); });
+    pending.payments.forEach(p => { const o = orphan.get(p.pay_date + '|' + p.amount); if (o?.length) p.dupOf = o.shift(); });
     renderPreview();
   } catch (err) { alert(t.readFail(err.message)); }
 };
 function renderPreview() {
   const t = T(), x = pending;
   if (!x) { $('xlPreview').innerHTML = ''; return; }
-  const any = x.payments.length || x.refunds.length;
-  $('xlPreview').innerHTML = `<p>${t.preview(won(x.payments.length), won(x.refunds.length), won(x.skipP), won(x.skipR))}</p>` +
+  const dups = x.payments.filter(p => p.dupOf), pays = x.dupOk ? x.payments : x.payments.filter(p => !p.dupOf);
+  const any = pays.length || x.refunds.length;
+  $('xlPreview').innerHTML = `<p>${t.preview(won(pays.length), won(x.refunds.length), won(x.skipP), won(x.skipR))}</p>` +
+    (dups.length ? `<div class="warnlist" style="padding-left:14px"><b>${t.dupTitle(won(dups.length))}</b><ul style="margin:6px 0;padding-left:18px">${dups.map(p => `<li>${esc(t.dupRow(p.src_row, p.pay_date, won(p.amount), p.dupOf.src_row ? t.row + ' ' + p.dupOf.src_row : t.manualEntry))}</li>`).join('')}</ul>
+      <label><input type="checkbox" id="xlDup" ${x.dupOk ? 'checked' : ''}> ${t.dupInclude}</label></div>` : '') +
     (x.warn.length ? `<ul class="warnlist">${x.warn.map(w => `<li>${esc(T().w[w.k](w))}</li>`).join('')}</ul>` : '') +
     (any ? `<button class="btn" id="xlGo">${t.importGo}</button> <button class="btn ghost" id="xlCancel">${t.cancel}</button>` : `<p class="muted">${t.nothingNew}</p>`);
+  if (dups.length) $('xlDup').onchange = e => { x.dupOk = e.target.checked; renderPreview(); };
   if (!any) return;
   $('xlCancel').onclick = () => { pending = null; renderPreview(); };
   $('xlGo').onclick = async () => {
     try {
       let np = 0, nr = 0;
       await busy(async () => {
-        for (let k = 0; k < Math.max(x.payments.length, 1); k += 300) {   // chunks keep each request small
-          const res = ok(await sb.rpc('import_batch', { p: { payments: x.payments.slice(k, k + 300), refunds: k ? [] : x.refunds } }));
+        for (let k = 0; k < Math.max(pays.length, 1); k += 300) {   // chunks keep each request small
+          const res = ok(await sb.rpc('import_batch', { p: { payments: pays.slice(k, k + 300).map(({ dupOf, ...p }) => p), refunds: k ? [] : x.refunds } }));
           np += res.payments; nr += res.refunds;
         }
       });
@@ -740,6 +802,32 @@ $('manForm').onsubmit = async e => {
   } catch (e2) { err(t.syncFail(e2.message)); }
 };
 
+/* ---------- monthly summary ---------- */
+function monthRows() {
+  const live = P.filter(p => !p.canceled_on);
+  if (!live.length) return [];
+  const months = [], last = today().slice(0, 7);
+  for (let m = live.reduce((a, p) => p.pay_date < a ? p.pay_date : a, last).slice(0, 7); m <= last; ) {
+    months.push(m);
+    const [y, mo] = m.split('-').map(Number); m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
+  }
+  const liveItems = I.filter(i => !payById.get(i.payment_id).canceled_on);
+  return months.map(m => {
+    const end = m + '-31';   // string compare: every real date in month m is <= 'YYYY-MM-31'
+    const bought = live.filter(p => p.pay_date.startsWith(m)), ret = F.filter(r => r.payment_id && r.return_date?.startsWith(m)), exp = liveItems.filter(i => i.exported_on?.startsWith(m));
+    const stock = liveItems.filter(i => { const p = payById.get(i.payment_id); return p.pay_date <= end && !(p.returned_on && p.returned_on <= end) && !(i.exported_on && i.exported_on <= end); });
+    const buy = sumBy(bought, p => p.amount), back = sumBy(ret, r => -r.amount);
+    return { m, n: bought.length, buy, back, net: buy - back, exp: sumBy(exp, i => i.qty * i.price), expW: sumBy(exp, i => i.weight), stock: sumBy(stock, i => i.qty * i.price) };
+  }).reverse();
+}
+function renderMonth() {
+  const t = T(), rows = monthRows();
+  $('monthTable').innerHTML = `<thead><tr><th>${t.month}</th><th class="n">${t.mPayN}</th><th class="n">${t.mPay}</th><th class="n">${t.mRet}</th><th class="n">${t.mNet}</th><th class="n">${t.mExp}</th><th class="n">${t.mExpW}</th><th class="n">${t.mStock}</th></tr></thead><tbody>` +
+    (rows.map(r => `<tr><td>${r.m}</td><td class="n">${won(r.n)}</td><td class="n">₩${won(r.buy)}</td><td class="n">₩${won(r.back)}</td><td class="n">₩${won(r.net)}</td><td class="n">₩${won(r.exp)}</td><td class="n">${kg(r.expW)}</td><td class="n">₩${won(r.stock)}</td></tr>`).join('') ||
+    `<tr><td colspan="8" class="empty">${t.none}</td></tr>`) + '</tbody>';
+}
+$('monthXlsx').onclick = () => { const t = T(); xlsxOut(monthRows().map(r => ({ [t.month]: r.m, [t.mPayN]: r.n, [t.mPay]: r.buy, [t.mRet]: r.back, [t.mNet]: r.net, [t.mExp]: r.exp, [t.mExpW]: r.expW, [t.mStock]: r.stock })), t.shMonth); };
+
 /* ---------- Excel out, backup, restore ---------- */
 function xlsxOut(rows, sheet) {
   const t = T();
@@ -754,8 +842,8 @@ $('backup').onclick = () => {
   if (!P.length && !F.length) return alert(t.nothing);
   const json = JSON.stringify({ v: 2, payments: P, items: I, refunds: F }), chunks = [];
   for (let k = 0; k < json.length; k += 30000) chunks.push([json.slice(k, k + 30000)]);   // Excel cell limit 32,767 chars
-  const flat = P.flatMap(p => { const its = itemsByPay.get(p.id) || []; const b = { [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.note]: p.note, [t.returnDate]: p.returned_on || '' };
-    return its.length ? its.map(i => ({ ...b, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.weightCol]: i.weight, [t.status]: t.st[status(i)], [t.exportDate]: i.exported_on || '' })) : [b]; });
+  const flat = P.flatMap(p => { const its = itemsByPay.get(p.id) || []; const b = { [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.note]: p.note, [t.returnDate]: p.returned_on || '', [t.psCxl]: p.canceled_on ? `${p.canceled_on} ${p.cancel_note}` : '' };
+    return its.length ? its.map(i => ({ ...b, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.weightCol]: i.weight, [t.status]: t.st[status(i)], [t.exportDate]: i.exported_on || '', [t.exportRef]: i.export_ref || '' })) : [b]; });
   const refs = F.map(r => ({ [t.txDate]: r.tx_date, [t.refAmt]: r.amount, [t.note]: r.note, [t.linkedPay]: r.payment_id ? payById.get(r.payment_id)?.pay_date : '', [t.returnDate]: r.return_date || '' }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flat), t.shPay);
@@ -783,7 +871,7 @@ $('restoreFile').onchange = async e => {
 const RENDER = { pay: renderPay, stock: renderStock, done: renderDone, ref: renderRef };
 function showTab(tab) {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.tab === tab));
-  ['pay', 'stock', 'done', 'ref', 'input'].forEach(k => $('tab-' + k).hidden = k !== tab);
+  ['pay', 'stock', 'done', 'ref', 'month', 'input'].forEach(k => $('tab-' + k).hidden = k !== tab);
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
@@ -799,7 +887,7 @@ function renderAll() {
   $('refundBanner').innerHTML = `<span>${t.banner(pend)}</span><button class="btn sm" id="goRef">${t.goRef}</button>`;
   if (pend) $('goRef').onclick = () => showTab('ref');
   $('nameList').innerHTML = cats().filter(Boolean).map(c => `<option value="${esc(c)}">`).join('');
-  renderPay(); renderStock(); renderDone(); renderRef(); renderPreview();
+  renderPay(); renderStock(); renderDone(); renderRef(); renderMonth(); renderPreview();
 }
 
 function setLang(l) {
