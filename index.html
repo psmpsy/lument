@@ -3,553 +3,835 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>구매·수출 장부</title>
+<title>구매·수출·재고 관리</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>
   :root {
     --bg:#faf7f2; --card:#fffdf9; --ink:#2b2622; --mut:#8a7f72; --line:#ebe4d8; --soft:#f3ede3;
-    --acc:#c2410c; --acc-ink:#fff; --acc-soft:#fbeee6;
-    --ok:#3f6212; --ok-soft:#ecf3df; --warn:#9a3412; --warn-soft:#fdf1e7; --warn-line:#f2d3bd;
+    --acc:#c2410c; --acc-soft:#fbeee6; --ok:#3f6212; --ok-soft:#ecf3df;
+    --red:#b42318; --red-soft:#fdecea; --red-line:#f1c9c4; --warn:#9a3412; --warn-soft:#fdf1e7; --warn-line:#f2d3bd;
     --font:"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Malgun Gothic", sans-serif;
   }
   * { box-sizing:border-box; }
-  html { -webkit-text-size-adjust:100%; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 var(--font); letter-spacing:-0.01em; }
-  /* 줄바꿈: 한국어는 단어(어절) 단위, 중국어는 글자 단위가 정상. 아주 긴 토큰만 강제로 끊음 */
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 var(--font); letter-spacing:-0.01em; overflow-wrap:break-word; }
   :lang(ko) { word-break:keep-all; }
   :lang(zh) { word-break:normal; line-break:strict; }
-  body { overflow-wrap:break-word; }
   button, input, select { font:inherit; color:inherit; letter-spacing:inherit; }
 
-  header { position:sticky; top:0; z-index:5; background:rgba(250,247,242,.94); backdrop-filter:blur(6px); border-bottom:1px solid var(--line); }
-  .head { max-width:1280px; margin:0 auto; padding:14px 24px; display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; }
-  .brand { font-size:19px; font-weight:700; letter-spacing:-0.02em; margin:0; white-space:nowrap; }
-  .meta { color:var(--mut); font-size:13px; flex:1 1 220px; min-width:0; }
-  .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-left:auto; }
+  header { position:sticky; top:0; z-index:5; background:rgba(250,247,242,.95); backdrop-filter:blur(6px); border-bottom:1px solid var(--line); }
+  .head { max-width:1360px; margin:0 auto; padding:12px 24px; display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; }
+  .brand { font-size:19px; font-weight:700; margin:0; white-space:nowrap; }
+  .meta { color:var(--mut); font-size:13px; flex:1 1 200px; min-width:0; }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   .lang { margin-left:auto; display:inline-flex; border:1px solid var(--line); border-radius:999px; padding:2px; background:var(--card); }
   .lang button { border:0; background:none; padding:4px 12px; border-radius:999px; cursor:pointer; font-size:13px; color:var(--mut); white-space:nowrap; }
   .lang button[aria-pressed="true"] { background:var(--ink); color:#fff; }
 
-  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:36px; padding:6px 16px; border-radius:999px; border:1px solid var(--acc); background:var(--acc); color:var(--acc-ink); cursor:pointer; font-size:14px; font-weight:500; white-space:nowrap; transition:filter .15s; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:36px; padding:6px 16px; border-radius:999px; border:1px solid var(--acc); background:var(--acc); color:#fff; cursor:pointer; font-size:14px; font-weight:500; white-space:nowrap; }
   .btn:hover { filter:brightness(1.07); }
   .btn.ghost { background:var(--card); color:var(--ink); border-color:var(--line); }
   .btn.ghost:hover { border-color:var(--mut); filter:none; }
-  .btn.danger { background:var(--card); color:#b42318; border-color:#f1c9c4; }
+  .btn.danger { background:var(--card); color:var(--red); border-color:var(--red-line); }
+  .btn.sm { min-height:30px; padding:3px 12px; font-size:13px; }
   .btn:disabled { opacity:.4; cursor:default; filter:none; }
-  .btn:focus-visible, .lang button:focus-visible, nav button:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  .btn:focus-visible, .lang button:focus-visible, nav button:focus-visible, .linkbtn:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
 
-  main { max-width:1280px; margin:0 auto; padding:20px 24px 48px; }
-  nav { display:flex; flex-wrap:wrap; gap:4px; border-bottom:1px solid var(--line); margin-bottom:20px; }
+  main { max-width:1360px; margin:0 auto; padding:18px 24px 64px; }
+  nav { display:flex; flex-wrap:wrap; gap:2px; border-bottom:1px solid var(--line); margin-bottom:18px; }
   nav button { border:0; background:none; padding:10px 16px; cursor:pointer; color:var(--mut); font-size:15px; font-weight:500; border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap; }
   nav button.on { color:var(--ink); border-bottom-color:var(--acc); }
+  nav .cnt { display:inline-block; margin-left:6px; font-size:12px; padding:0 7px; border-radius:999px; background:var(--soft); color:var(--mut); }
+  nav .cnt.alert { background:var(--red); color:#fff; }
 
+  .banner { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; background:var(--red-soft); border:1px solid var(--red-line); color:var(--red); border-radius:14px; padding:12px 18px; margin-bottom:16px; }
+  .banner b { font-weight:600; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:16px; min-width:0; }
   .card h2 { font-size:16px; font-weight:600; margin:0 0 12px; }
-  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:12px; margin-bottom:16px; }
-  .stat { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; min-width:0; }
+  .card h3 { font-size:15px; font-weight:600; margin:0 0 10px; }
+  .muted { color:var(--mut); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:16px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 18px; min-width:0; }
   .stat span { display:block; color:var(--mut); font-size:13px; }
-  .stat b { display:block; margin-top:4px; font-size:clamp(20px, 2.3vw, 27px); font-weight:700; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; line-height:1.25; }
-  .stat.hl { background:var(--acc-soft); border-color:#f2d3bd; }
+  .stat b { display:block; margin-top:2px; font-size:clamp(19px, 2.1vw, 25px); font-weight:700; font-variant-numeric:tabular-nums; line-height:1.25; }
+  .stat.hl { background:var(--acc-soft); border-color:var(--warn-line); }
   .stat.hl b { color:var(--acc); }
 
-  .bar { display:flex; flex-wrap:wrap; gap:8px 10px; align-items:center; margin-bottom:12px; }
-  .bar h2 { margin:0 8px 0 0; }
-  .bar .grow { flex:1 1 0; }
-  .field { display:inline-flex; align-items:center; gap:6px; color:var(--mut); font-size:13px; white-space:nowrap; }
-  input[type=date], input[type=search], input[type=text], input[type=number], input[type=email], input[type=password] { min-height:36px; padding:6px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; min-width:0; }
+  .filters { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-end; margin-bottom:14px; }
+  .f { display:grid; gap:3px; font-size:12px; color:var(--mut); min-width:0; }
+  .f > span { white-space:nowrap; }
+  .f .row { display:flex; align-items:center; gap:6px; color:var(--ink); }
+  input[type=date], input[type=search], input[type=text], input[type=number], input[type=email], input[type=password], select {
+    min-height:36px; padding:6px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; min-width:0; }
   input[type=search], input[type=text] { width:12em; max-width:100%; }
-  input:focus { outline:2px solid var(--acc-soft); border-color:var(--acc); }
+  input:focus, select:focus { outline:2px solid var(--acc-soft); border-color:var(--acc); }
+  .multi { position:relative; }
+  .multi summary { list-style:none; cursor:pointer; min-height:36px; padding:6px 30px 6px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--ink); white-space:nowrap; max-width:16em; overflow:hidden; text-overflow:ellipsis; position:relative; }
+  .multi summary::after { content:"▾"; position:absolute; right:10px; color:var(--mut); }
+  .multi summary::-webkit-details-marker { display:none; }
+  .multi .opts { position:absolute; z-index:6; top:calc(100% + 4px); left:0; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:8px; min-width:15em; max-height:320px; overflow:auto; box-shadow:0 8px 24px rgba(43,38,34,.12); }
+  .multi label { display:flex; gap:8px; align-items:center; padding:4px 6px; border-radius:6px; color:var(--ink); font-size:14px; cursor:pointer; white-space:nowrap; }
+  .multi label:hover { background:var(--soft); }
+  .multi .tools { display:flex; gap:6px; padding:2px 2px 6px; border-bottom:1px solid var(--line); margin-bottom:4px; }
 
-  .scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--line); border-radius:12px; }
+  .selbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:10px 14px; margin-bottom:12px; border-radius:12px; background:var(--soft); }
+  .selbar .sum { font-size:14px; }
+  .selbar .sum b { font-variant-numeric:tabular-nums; }
+  .selbar .grow { flex:1 1 0; }
+  .panel { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; padding:12px 14px; margin-bottom:12px; border:1px solid var(--warn-line); background:var(--warn-soft); border-radius:12px; }
+
+  .scroll { overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:12px; }
   table { border-collapse:collapse; width:100%; font-size:14px; }
-  th, td { padding:9px 12px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:middle; }
-  th { background:var(--soft); color:var(--mut); font-size:13px; font-weight:600; position:sticky; top:0; }
-  tr:last-child td { border-bottom:0; }
-  tbody tr:hover td { background:#fbf8f3; }
+  th, td { padding:8px 12px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:middle; }
+  th { background:var(--soft); color:var(--mut); font-size:13px; font-weight:600; position:sticky; top:0; z-index:1; }
   td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
-  td.wrap { white-space:normal; min-width:12em; max-width:28em; }
-  tr.part td { background:#fdf6ef; }
-  input.qty { width:6.5em; text-align:right; }
-  #todoLines tbody { user-select:none; cursor:pointer; }
-  #todoLines tbody tr:has(.pick:checked) td { background:var(--acc-soft); }
-  .tag { display:inline-block; font-size:12px; padding:2px 9px; border-radius:999px; background:var(--acc-soft); color:var(--acc); white-space:nowrap; }
-  .tag.done { background:var(--ok-soft); color:var(--ok); }
-  .tag.unk { background:var(--soft); color:var(--mut); }
-  .warn { background:var(--warn-soft); border-color:var(--warn-line); color:var(--warn); }
-  .warn h2 { color:var(--warn); }
-  .warn ul { margin:0; padding-left:20px; }
-  .warn li { margin:2px 0; }
-  .empty { text-align:center; padding:48px 16px; color:var(--mut); white-space:normal; }
-  details summary { cursor:pointer; list-style:none; display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline; }
-  details summary::-webkit-details-marker { display:none; }
-  details summary::before { content:"▸"; color:var(--mut); }
-  details[open] summary::before { content:"▾"; }
-  details summary b { font-size:16px; }
-  details summary span { color:var(--mut); font-size:14px; }
-  details .scroll { margin-top:12px; }
+  td.wrap { white-space:normal; min-width:10em; max-width:26em; }
+  tbody tr:hover td { background:#fbf8f3; }
+  .seltable tbody { user-select:none; cursor:pointer; }
+  .seltable tbody tr.sel td { background:var(--acc-soft); }
+  tr.ret td { background:var(--red-soft) !important; }
+  tr.ret td:first-child { box-shadow:inset 3px 0 0 var(--red); }
+  tr.sub > td { background:#fcfaf6; padding:0 12px 12px 44px; }
+  tr.sub table { font-size:13px; background:var(--card); border:1px solid var(--line); border-radius:10px; }
+  .linkbtn { border:0; background:none; padding:0; cursor:pointer; color:var(--acc); font-weight:600; text-decoration:underline; text-underline-offset:3px; font-variant-numeric:tabular-nums; }
+  .tag { display:inline-block; font-size:12px; padding:2px 9px; border-radius:999px; white-space:nowrap; background:var(--soft); color:var(--mut); }
+  .tag.stock { background:var(--acc-soft); color:var(--acc); }
+  .tag.exp { background:var(--ok-soft); color:var(--ok); }
+  .tag.ret { background:var(--red); color:#fff; }
+  .tag.pend { background:var(--red-soft); color:var(--red); }
+  .empty { text-align:center; padding:40px 16px; color:var(--mut); white-space:normal; }
+  .warnlist { background:var(--warn-soft); border:1px solid var(--warn-line); color:var(--warn); border-radius:12px; padding:10px 14px 10px 30px; margin:10px 0; font-size:14px; }
+  .itemsform { width:100%; }
+  .itemsform td { padding:6px; border:0; }
+  .itemsform input { width:100%; }
+  .err { color:var(--red); font-size:13px; min-height:1.2em; margin:6px 0 0; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; }
   [hidden] { display:none !important; }
+
   body.out main > :not(#login), body.out .actions, body.out .meta, body:not(.out) #login { display:none !important; }
-  body.busy { cursor:progress; }
+  body.busy, body.busy * { cursor:progress !important; }
   #login { max-width:380px; margin:8vh auto 0; }
   #login form { display:grid; gap:12px; }
   #login label { display:grid; gap:4px; font-size:13px; color:var(--mut); }
   #login input { width:100%; }
-  #loginErr { color:#b42318; font-size:13px; min-height:1.2em; margin:0; }
 
   @media (max-width:640px) {
     .head, main { padding-left:16px; padding-right:16px; }
-    .brand { order:0; }
-    .lang { order:1; margin-left:auto; }
-    .meta { order:2; flex-basis:100%; }
-    .actions { order:3; margin-left:0; width:100%; }
+    .lang { order:1; } .brand { order:0; }
+    .meta { order:2; flex-basis:100%; } .actions { order:3; width:100%; }
   }
 </style>
 </head>
-<body>
+<body class="out">
 <header>
   <div class="head">
     <h1 class="brand" data-i18n="title"></h1>
     <span class="meta" id="meta"></span>
     <div class="actions">
-      <label class="btn"><span data-i18n="upload"></span><input type="file" id="file" accept=".xlsx,.xls" hidden></label>
       <button class="btn ghost" id="backup" data-i18n="backup"></button>
+      <label class="btn ghost"><span data-i18n="restore"></span><input type="file" id="restoreFile" accept=".xlsx" hidden></label>
       <button class="btn ghost" id="logout" data-i18n="logout"></button>
     </div>
-    <div class="lang" role="group" aria-label="Language">
-      <button data-lang="ko">한국어</button><button data-lang="zh">中文</button>
-    </div>
+    <div class="lang" role="group" aria-label="Language"><button data-lang="ko">한국어</button><button data-lang="zh">中文</button></div>
   </div>
 </header>
+
 <main>
   <section id="login" class="card">
     <h2 data-i18n="loginTitle"></h2>
     <form id="loginForm">
       <label><span data-i18n="email"></span><input type="email" id="email" autocomplete="username" required></label>
       <label><span data-i18n="password"></span><input type="password" id="password" autocomplete="current-password" required></label>
-      <p id="loginErr" role="alert"></p>
+      <p class="err" id="loginErr" role="alert"></p>
       <button class="btn" type="submit" data-i18n="loginBtn"></button>
     </form>
   </section>
-  <div class="card warn" id="warnBox" hidden><h2 data-i18n="check"></h2><ul id="warnList"></ul></div>
+
+  <div class="banner" id="refundBanner" hidden></div>
+
   <nav>
-    <button data-tab="todo" class="on" data-i18n="tabTodo"></button>
-    <button data-tab="buy" data-i18n="tabBuy"></button>
-    <button data-tab="exp" data-i18n="tabExp"></button>
+    <button data-tab="pay" class="on"><span data-i18n="tabPay"></span></button>
+    <button data-tab="stock"><span data-i18n="tabStock"></span><span class="cnt" id="cntStock"></span></button>
+    <button data-tab="done"><span data-i18n="tabDone"></span><span class="cnt" id="cntDone"></span></button>
+    <button data-tab="ref"><span data-i18n="tabRef"></span><span class="cnt" id="cntRef"></span></button>
+    <button data-tab="input"><span data-i18n="tabInput"></span></button>
   </nav>
 
-  <section id="tab-todo">
-    <div class="stats" id="todoStats"></div>
+  <!-- 결제건 -->
+  <section id="tab-pay">
     <div class="card">
-      <h2 data-i18n="byName"></h2>
-      <div class="scroll"><table id="todoByName"></table></div>
-    </div>
-    <div class="card">
-      <div class="bar">
-        <h2 data-i18n="detail"></h2>
-        <span class="field"><input type="date" id="tFrom"> ~ <input type="date" id="tTo"></span>
-        <input type="search" id="tQ" data-i18n-ph="search">
-      </div>
-      <div class="bar">
-        <span class="field"><span data-i18n="expDate"></span> <input type="date" id="expDate"></span>
-        <input type="text" id="expMemo" data-i18n-ph="memo">
-        <span class="grow"></span>
-        <button class="btn" id="doExport" disabled></button>
-      </div>
-      <div class="scroll"><table id="todoLines"></table></div>
+      <div class="filters" id="fPay"></div>
+      <div class="selbar"><span class="sum" id="paySum"></span><span class="grow"></span><button class="btn ghost sm" id="payXlsx" data-i18n="xlsx"></button></div>
+      <div class="scroll"><table id="payTable"></table></div>
     </div>
   </section>
 
-  <section id="tab-buy" hidden>
+  <!-- 재고 -->
+  <section id="tab-stock" hidden>
+    <div class="stats" id="stockStats"></div>
     <div class="card">
-      <div class="bar">
-        <span class="field"><input type="date" id="bFrom"> ~ <input type="date" id="bTo"></span>
-        <input type="search" id="bQ" data-i18n-ph="search">
-        <span class="field" id="bSum"></span>
+      <div class="filters" id="fStock"></div>
+      <div class="selbar">
+        <span class="sum" id="stockSel"></span><span class="grow"></span>
+        <button class="btn ghost sm" id="stockXlsx" data-i18n="xlsx"></button>
+        <button class="btn" id="stockExport" data-i18n="bulkExport"></button>
       </div>
-      <div class="scroll"><table id="buyTable"></table></div>
+      <div class="panel" id="exportPanel" hidden>
+        <span data-i18n="expDate"></span> <input type="date" id="expDate">
+        <span id="exportPanelSum"></span>
+        <button class="btn" id="exportGo" data-i18n="confirmExport"></button>
+        <button class="btn ghost" id="exportCancel" data-i18n="cancel"></button>
+      </div>
+      <div class="scroll"><table id="stockTable" class="seltable"></table></div>
     </div>
   </section>
 
-  <section id="tab-exp" hidden>
-    <div id="expList"></div>
+  <!-- 수출 완료 -->
+  <section id="tab-done" hidden>
+    <div class="card">
+      <div class="filters" id="fDone"></div>
+      <div class="selbar">
+        <span class="sum" id="doneSel"></span><span class="grow"></span>
+        <button class="btn ghost sm" id="doneXlsx" data-i18n="xlsx"></button>
+        <button class="btn danger sm" id="doneUndo" data-i18n="undoExport"></button>
+      </div>
+      <div class="scroll"><table id="doneTable" class="seltable"></table></div>
+    </div>
+  </section>
+
+  <!-- 반품·환불 -->
+  <section id="tab-ref" hidden>
+    <div class="card" id="linkCard" hidden></div>
+    <div class="card">
+      <div class="filters" id="fRef"></div>
+      <div class="selbar"><span class="sum" id="refSum"></span><span class="grow"></span><button class="btn ghost sm" id="refXlsx" data-i18n="xlsx"></button></div>
+      <div class="scroll"><table id="refTable"></table></div>
+    </div>
+  </section>
+
+  <!-- 입력 -->
+  <section id="tab-input" hidden>
+    <div class="grid2">
+      <div class="card">
+        <h2 data-i18n="xlUpload"></h2>
+        <p class="muted" data-i18n="xlUploadHelp"></p>
+        <label class="btn"><span data-i18n="chooseFile"></span><input type="file" id="xlFile" accept=".xlsx,.xls" hidden></label>
+        <div id="xlPreview"></div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="manual"></h2>
+        <form id="manForm">
+          <div class="filters">
+            <label class="f"><span data-i18n="payDate"></span><input type="date" id="mDate" required></label>
+            <label class="f"><span data-i18n="cardAmt"></span><input type="number" id="mAmt" step="any" required></label>
+            <label class="f"><span data-i18n="note"></span><input type="text" id="mNote"></label>
+          </div>
+          <p class="muted" data-i18n="manualHelp"></p>
+          <table class="itemsform"><thead><tr><th data-i18n="name"></th><th data-i18n="qty"></th><th data-i18n="price"></th><th data-i18n="weightCol"></th><th></th></tr></thead><tbody id="mItems"></tbody></table>
+          <datalist id="nameList"></datalist>
+          <p><button type="button" class="btn ghost sm" id="mAdd" data-i18n="addItem"></button></p>
+          <p class="err" id="mErr" role="alert"></p>
+          <button class="btn" type="submit" data-i18n="save"></button>
+        </form>
+      </div>
+    </div>
   </section>
 </main>
 
-<!-- core: no DOM, also run by the test script -->
+<!-- core: Excel parsing, no DOM; also run by the test script -->
 <script id="core">
 const SLOTS = [['E','F','G','H'], ['I','J','K','L'], ['M','N','O','P'], ['Q','R','S','T']];
 const num = v => typeof v === 'number' && isFinite(v) ? v : null;
 const won = n => Math.round(n).toLocaleString('ko-KR');
 const kg = n => (Math.round(n * 100) / 100).toLocaleString('ko-KR');
-// Excel serial → yyyy-mm-dd (UTC math avoids timezone drift)
 const serialToISO = s => new Date(Math.round((s - 25569) * 864e5)).toISOString().slice(0, 10);
 
-// Reads only columns A–T; B,C (hidden) ignored. Rows whose A is not a date (header, 合计) are skipped.
-// Warnings are {k, ...params} so the page can show them in either language.
+// Reads columns A–T only (hidden B,C ignored). Row with a date in A = one card payment; negative D = refund.
+// src_key identifies a row across re-uploads: same date+amount+items (+ordinal for exact duplicates).
+// shortcut: editing an already-imported row in Excel changes its key, so it would import again as new → shown in the preview first.
 function parseSheet(ws) {
-  const rows = [], warn = [], seen = {};
+  const payments = [], refunds = [], warn = [], seen = {};
   const last = XLSX.utils.decode_range(ws['!ref']).e.r + 1;
   const val = (c, r) => { const x = ws[c + r]; return x ? x.v : undefined; };
+  const keyOf = base => { seen[base] = (seen[base] || 0) + 1; return base + '#' + seen[base]; };
   for (let r = 2; r <= last; r++) {
     const a = ws['A' + r];
     if (!a || a.t !== 'n') {
       if (a && a.t === 's' && a.v.trim() && a.v.trim() !== '合计') warn.push({ k: 'notDate', r, v: a.v });
       continue;
     }
-    const date = serialToISO(a.v), amount = num(val('D', r));
+    const date = serialToISO(a.v), amount = num(val('D', r)) ?? 0;
     const items = [], notes = [];
     SLOTS.forEach(([cn, cq, cp, cw]) => {
       const name = String(val(cn, r) ?? '').trim(), qty = num(val(cq, r));
-      if (qty === null) { if (name) notes.push(name); return; }   // 退款了 / 取消 같은 메모
+      if (qty === null || qty <= 0) { if (name) notes.push(name); return; }
       const price = num(val(cp, r)), rawW = val(cw, r), weight = num(rawW);
       if (price === null) warn.push({ k: 'badPrice', r, c: cp });
       if (weight === null && rawW != null && String(rawW).trim()) warn.push({ k: 'badWeight', r, c: cw, v: rawW });
-      // shortcut: key = 날짜·품목·수량·단가 + 같은 조합 순번. 과거 행을 고치거나 중간에 끼워 넣으면 수출 기록이 어긋날 수 있음 → "확인 필요"에 표시됨
-      const base = [date, name, qty, price ?? ''].join('|');
-      seen[base] = (seen[base] || 0) + 1;
-      items.push({ row: r, date, name, qty, price: price || 0, weight: weight || 0, key: base + '#' + seen[base] });
+      items.push({ name, qty, price: price || 0, weight: weight || 0 });
     });
+    const note = notes.join(', ');
+    if (amount < 0) {
+      refunds.push({ tx_date: date, amount, note, src_row: r, src_key: keyOf(['R', date, amount].join('|')) });
+      continue;
+    }
     const sum = items.reduce((s, x) => s + x.qty * x.price, 0);
-    if (items.length && amount !== null && Math.abs(sum - amount) > 1) warn.push({ k: 'mismatch', r, a: amount, b: sum });
-    rows.push({ row: r, date, amount: amount || 0, items, notes });
+    if (items.length && Math.abs(sum - amount) > 1) warn.push({ k: 'mismatch', r, a: amount, b: sum });
+    const sig = items.map(i => [i.name, i.qty, i.price].join(':')).join(',');
+    payments.push({ pay_date: date, amount, note, src_row: r, src_key: keyOf(['P', date, amount, sig].join('|')), items });
   }
-  return { rows, warn };
-}
-
-function exportedByKey(exportsList) {
-  const m = {};
-  for (const e of exportsList) for (const l of e.lines) m[l.key] = (m[l.key] || 0) + l.qty;
-  return m;
-}
-
-// every item line with how much is still not exported; weight is for the whole qty, so prorate
-function withRemaining(rows, exportsList) {
-  const done = exportedByKey(exportsList);
-  return rows.flatMap(r => r.items).map(it => {
-    const sent = Math.min(done[it.key] || 0, it.qty), left = it.qty - sent;
-    return { ...it, sent, left, leftAmt: left * it.price, leftW: it.qty ? it.weight * left / it.qty : 0 };
-  });
+  return { payments, refunds, warn };
 }
 </script>
 
 <script>
+/* ---------- i18n ---------- */
 const I18N = {
   ko: {
-    title: '구매·수출 장부', upload: '엑셀 업로드', backup: '엑셀 내보내기 (백업)', nothing: '내보낼 기록이 없어요',
-    loginTitle: '로그인', email: '이메일', password: '비밀번호', loginBtn: '로그인', logout: '로그아웃',
-    loginFail: '이메일이나 비밀번호가 맞지 않아요', syncFail: m => `서버에 저장하지 못했어요. 변경 내용은 반영되지 않았어요.\n${m}`,
-    loadFail: m => `서버에서 데이터를 불러오지 못했어요: ${m}`,
-    noFile: '엑셀을 올려주세요', meta: (f, t, n) => `${f} · ${t} 업로드 · 결제 ${n}건`,
-    check: '확인 필요', tabTodo: '미수출', tabBuy: '구매내역', tabExp: '수출내역',
-    sQty: '미수출 수량', sAmt: '미수출 금액', sW: '미수출 중량', sOld: '가장 오래된 구매일', pcs: '개',
-    byName: '품목별 미수출', detail: '미수출 상세', search: '품목 검색', expDate: '수출일', memo: '메모 (선택)',
-    doExport: '선택 항목 수출 처리', doExportN: n => `선택 ${n}건 수출 처리`,
-    name: '품목', qty: '수량', amt: '금액', weight: '중량(kg)', price: '단가', buyDate: '구매일', row: '엑셀 행',
-    bought: '구매', sent: '수출함', left: '남음', sendQty: '보낼 수량', leftW: '남은 중량(kg)', selAll: '전체 선택', sel: '선택',
-    card: '카드 결제(세금 포함)', status: '수출', done: '완료', unknown: '품목 미상', note: '메모',
-    allDone: '모두 수출했어요', needUpload: '엑셀을 올리면 여기에 표시돼요',
-    bSum: (n, a) => `${n}건 · 결제 합계 ₩${a}`,
-    expHead: (n, q, a) => `${n}건 · ${q}개 · ₩${a}`, delExp: '이 수출 기록 삭제',
-    noExp: '아직 수출 기록이 없어요. 미수출 탭에서 항목을 골라 수출 처리하세요.',
+    title: '구매·수출·재고 관리', backup: '전체 백업', restore: '백업 복원', logout: '로그아웃',
+    loginTitle: '로그인', email: '이메일', password: '비밀번호', loginBtn: '로그인', loginFail: '이메일이나 비밀번호가 맞지 않아요',
+    meta: (p, i) => `결제건 ${p} · 상품 ${i}`,
+    tabPay: '구매 결제건', tabStock: '재고', tabDone: '수출 완료', tabRef: '반품·환불', tabInput: '입력',
+    banner: n => `확인이 필요한 환불 거래가 <b>${n}건</b> 있어요. 원래 결제건과 연결해 주세요.`, goRef: '환불 확인하기',
+    xlsx: 'Excel 내보내기', bulkExport: '일괄 수출', expDate: '수출일', confirmExport: '수출 기록', cancel: '취소', undoExport: '선택 수출 취소',
+    payDate: '구매일', cardAmt: '카드 결제 총액', note: '메모', name: '상품명', cat: '카테고리', qty: '수량', price: '단가', amt: '금액', weightCol: '총중량(kg)',
+    status: '상태', exportDate: '수출일', row: '엑셀 행', items: '상품', search: '상품명 검색', from: '부터', to: '까지',
+    sort: '정렬', oldFirst: '오래된 구매일 먼저', newFirst: '최근 구매일 먼저', all: '전체', none: '없음', selectAll: '전체 선택', clear: '선택 해제',
+    catAll: '카테고리 전체', catN: n => `카테고리 ${n}개`,
+    st: { stock: '재고', exported: '수출 완료', returned: '반품' },
+    payStatus: '결제건 상태', psAll: '전체', psStock: '재고 있음', psDone: '모두 수출', psRet: '반품', psNone: '상품 정보 없음',
+    noItems: '상품 정보 없음', expandHint: '금액을 누르면 상품이 펼쳐져요',
+    paySum: (n, a) => `결제건 ${n}건 · 합계 ₩${a}`,
+    sStockQty: '재고 수량', sStockAmt: '재고 금액', sStockW: '재고 중량', sOldest: '가장 오래된 재고 구매일',
+    selSum: (n, q, a, w) => `선택 <b>${n}</b>건 · 수량 <b>${q}</b> · 금액 <b>₩${a}</b> · 중량 <b>${w}kg</b>`,
+    shown: n => `표시 ${n}건`, pcs: '개',
+    exportAsk: (n, d) => `선택한 ${n}건을 ${d} 수출로 기록할까요?`, exported: n => `${n}건을 수출로 기록했어요`,
+    needDate: '날짜를 넣어주세요', needSel: '먼저 상품을 선택하세요',
+    undoAsk: n => `선택한 ${n}건의 수출 기록을 취소하고 재고로 되돌릴까요?`,
+    refAmt: '환불액', txDate: '거래일', linkedPay: '원래 결제건', returnDate: '반품일', diff: '결제−환불 차액', refStatus: '처리',
+    pending: '확인 필요', linked: '연결됨', linkBtn: '원래 결제건 연결', rfAll: '전체', rfPend: '확인 필요', rfDone: '처리 완료',
+    refSum: (n, p) => `환불 ${n}건 · 확인 필요 ${p}건`,
+    linkTitle: (d, a) => `환불 연결: ${d} · ₩${a}`, linkHelp: '구매일·금액으로 원래 결제건을 찾아 고른 뒤 반품일을 넣으세요. 결제건 안의 상품 전체가 반품 처리돼요.',
+    amtMatch: '환불액과 같은 금액만', pick: '선택', linkGo: '반품 처리', linkNoPick: '연결할 결제건을 고르세요',
+    linkBlocked: '이 결제건에는 이미 수출된 상품이 있어 전체 반품을 할 수 없어요. 과거 기록을 확인해 주세요.',
+    linkAsk: (d, a, r) => `${d} 결제건(₩${a})을 반품일 ${r}로 반품 처리할까요?\n이 결제건의 상품은 재고·수출 목록에서 빠져요.`,
+    retTag: d => `반품 ${d}`, refundOf: a => `환불 ₩${a}`,
+    xlUpload: 'Excel 업로드', xlUploadHelp: '구매 엑셀(A–T열)을 올리면 이미 들어간 결제건은 건너뛰고 새 결제건만 추가해요. 결제금액(D열)이 음수인 행은 환불 거래로 들어가요.',
+    chooseFile: '파일 선택', preview: (p, r, sp, sr) => `새 결제건 <b>${p}</b>건, 새 환불 <b>${r}</b>건을 가져와요. (이미 있는 결제건 ${sp}건 · 환불 ${sr}건은 건너뜀)`,
+    importGo: '가져오기', imported: (p, r) => `결제건 ${p}건, 환불 ${r}건을 추가했어요`, nothingNew: '새로 추가할 내용이 없어요',
+    manual: '직접 입력', manualHelp: '금액을 음수로 넣으면 환불 거래로 저장되고 바로 연결 화면이 열려요(상품 입력은 무시).',
+    addItem: '+ 상품 줄 추가', save: '저장', del: '삭제', saved: '저장했어요',
+    mErrDate: '구매일을 넣어주세요', mErrAmt: '카드 결제 총액을 숫자로 넣어주세요', mErrItem: n => `${n}번째 상품 줄: 상품명과 0보다 큰 수량이 필요해요`,
     w: {
       notDate: x => `${x.r}행 A열 "${x.v}"는 날짜가 아니라서 건너뜀`,
       badPrice: x => `${x.r}행 ${x.c}열 단가가 숫자가 아님 → 0으로 처리`,
       badWeight: x => `${x.r}행 ${x.c}열 중량 "${x.v}"가 숫자가 아님 → 0으로 처리`,
       mismatch: x => `${x.r}행 결제금액 ₩${won(x.a)} ≠ 상품 합계 ₩${won(x.b)}`,
-      orphan: x => `${x.d} 수출 기록의 ${x.id} ${x.n} ${x.q}개가 지금 엑셀에서 보이지 않음 (행이 수정됐을 수 있음)`,
     },
-    readFail: m => `엑셀을 읽지 못했어요: ${m}`,
-    noRows: 'A열에 날짜가 있는 행을 찾지 못했어요. 첫 번째 시트 형식을 확인하세요.',
-    badBackup: '백업 엑셀의 복구용 데이터가 손상됐어요',
-    restoreAsk: n => `백업 엑셀이에요. 이 백업으로 복구할까요?\n지금 기록이 백업 내용(수출 기록 ${n}건)으로 바뀌어요.`,
-    qtyRange: (d, n, max) => `${d} ${n}: 보낼 수량은 1~${max} 사이 정수여야 해요`,
-    needDate: '수출일을 넣어주세요',
-    expAsk: (d, n, q) => `${d} 수출로 ${n}건, ${q}개를 기록할까요?`,
-    delAsk: '이 수출 기록을 지울까요? 해당 물건은 다시 미수출로 돌아가요.',
-    backupName: '구매수출_백업',
+    readFail: m => `파일을 읽지 못했어요: ${m}`, noRows: 'A열에 날짜가 있는 행을 찾지 못했어요',
+    syncFail: m => `서버 작업에 실패했어요. 변경 내용은 반영되지 않았어요.\n${m}`, loadFail: m => `서버에서 데이터를 불러오지 못했어요: ${m}`,
+    notBackup: '이 파일은 전체 백업 파일이 아니에요', badBackup: '백업 파일의 복구용 데이터가 손상됐어요',
+    restoreAsk: (p, i, r) => `백업으로 전체 데이터를 복원할까요?\n지금 서버 데이터가 모두 지워지고 백업 내용(결제건 ${p} · 상품 ${i} · 환불 ${r})으로 바뀌어요.`,
+    restored: '복원했어요', nothing: '내보낼 데이터가 없어요',
+    shPay: '결제건·상품', shRef: '반품·환불', shStock: '재고', shDone: '수출 완료', fileName: '구매수출',
   },
   zh: {
-    title: '采购·出口台账', upload: '上传 Excel', backup: '导出 Excel（备份）', nothing: '没有可导出的记录',
-    loginTitle: '登录', email: '邮箱', password: '密码', loginBtn: '登录', logout: '退出登录',
-    loginFail: '邮箱或密码不正确', syncFail: m => `保存到服务器失败，本次修改未生效。\n${m}`,
-    loadFail: m => `无法从服务器加载数据：${m}`,
-    noFile: '请上传 Excel', meta: (f, t, n) => `${f} · ${t} 上传 · 共 ${n} 笔`,
-    check: '需要确认', tabTodo: '未出口', tabBuy: '采购记录', tabExp: '出口记录',
-    sQty: '未出口数量', sAmt: '未出口金额', sW: '未出口重量', sOld: '最早采购日期', pcs: '件',
-    byName: '按品名汇总（未出口）', detail: '未出口明细', search: '搜索品名', expDate: '出口日期', memo: '备注（可选）',
-    doExport: '将所选标记为已出口', doExportN: n => `已选 ${n} 项 · 标记为已出口`,
-    name: '品名', qty: '数量', amt: '金额', weight: '重量(kg)', price: '单价', buyDate: '采购日期', row: 'Excel 行',
-    bought: '采购', sent: '已出口', left: '剩余', sendQty: '本次出口数量', leftW: '剩余重量(kg)', selAll: '全选', sel: '选择',
-    card: '刷卡金额（含税）', status: '出口', done: '已完成', unknown: '品名不详', note: '备注',
-    allDone: '已全部出口', needUpload: '上传 Excel 后在此显示',
-    bSum: (n, a) => `${n} 笔 · 刷卡合计 ₩${a}`,
-    expHead: (n, q, a) => `${n} 项 · ${q} 件 · ₩${a}`, delExp: '删除此出口记录',
-    noExp: '暂无出口记录。请在“未出口”页选择商品并标记出口。',
+    title: '采购·出口·库存管理', backup: '完整备份', restore: '恢复备份', logout: '退出登录',
+    loginTitle: '登录', email: '邮箱', password: '密码', loginBtn: '登录', loginFail: '邮箱或密码不正确',
+    meta: (p, i) => `付款 ${p} 笔 · 商品 ${i} 条`,
+    tabPay: '采购付款', tabStock: '库存', tabDone: '已出口', tabRef: '退货·退款', tabInput: '录入',
+    banner: n => `有 <b>${n} 笔</b>退款交易需要确认，请关联原付款记录。`, goRef: '去确认退款',
+    xlsx: '导出 Excel', bulkExport: '批量出口', expDate: '出口日期', confirmExport: '记录出口', cancel: '取消', undoExport: '撤销所选出口',
+    payDate: '采购日期', cardAmt: '刷卡总额', note: '备注', name: '品名', cat: '类别', qty: '数量', price: '单价', amt: '金额', weightCol: '总重量(kg)',
+    status: '状态', exportDate: '出口日期', row: 'Excel 行', items: '商品', search: '搜索品名', from: '起', to: '止',
+    sort: '排序', oldFirst: '采购日期从早到晚', newFirst: '采购日期从晚到早', all: '全部', none: '无', selectAll: '全选', clear: '取消选择',
+    catAll: '全部类别', catN: n => `已选 ${n} 个类别`,
+    st: { stock: '库存', exported: '已出口', returned: '退货' },
+    payStatus: '付款状态', psAll: '全部', psStock: '有库存', psDone: '全部已出口', psRet: '退货', psNone: '无商品信息',
+    noItems: '无商品信息', expandHint: '点击金额可展开商品',
+    paySum: (n, a) => `付款 ${n} 笔 · 合计 ₩${a}`,
+    sStockQty: '库存数量', sStockAmt: '库存金额', sStockW: '库存重量', sOldest: '最早库存采购日期',
+    selSum: (n, q, a, w) => `已选 <b>${n}</b> 条 · 数量 <b>${q}</b> · 金额 <b>₩${a}</b> · 重量 <b>${w}kg</b>`,
+    shown: n => `显示 ${n} 条`, pcs: '件',
+    exportAsk: (n, d) => `将所选 ${n} 条记录为 ${d} 出口吗？`, exported: n => `已将 ${n} 条记录为出口`,
+    needDate: '请填写日期', needSel: '请先选择商品',
+    undoAsk: n => `撤销所选 ${n} 条的出口记录并恢复为库存吗？`,
+    refAmt: '退款金额', txDate: '交易日期', linkedPay: '原付款', returnDate: '退货日期', diff: '付款−退款差额', refStatus: '处理',
+    pending: '需要确认', linked: '已关联', linkBtn: '关联原付款', rfAll: '全部', rfPend: '需要确认', rfDone: '已处理',
+    refSum: (n, p) => `退款 ${n} 笔 · 需要确认 ${p} 笔`,
+    linkTitle: (d, a) => `关联退款：${d} · ₩${a}`, linkHelp: '按采购日期和金额找到原付款并选择，再填写退货日期。该付款内的全部商品将被标记为退货。',
+    amtMatch: '仅显示与退款金额相同的', pick: '选择', linkGo: '办理退货', linkNoPick: '请选择要关联的付款',
+    linkBlocked: '该付款中已有商品出口，无法整笔退货。请检查历史记录。',
+    linkAsk: (d, a, r) => `确认将 ${d} 的付款（₩${a}）按退货日期 ${r} 办理退货吗？\n该付款的商品将从库存和出口列表中移除。`,
+    retTag: d => `退货 ${d}`, refundOf: a => `退款 ₩${a}`,
+    xlUpload: '上传 Excel', xlUploadHelp: '上传采购 Excel（A–T 列）后，已导入的付款会跳过，只添加新付款。付款金额（D 列）为负数的行将作为退款交易导入。',
+    chooseFile: '选择文件', preview: (p, r, sp, sr) => `将导入新付款 <b>${p}</b> 笔、新退款 <b>${r}</b> 笔。（已存在的付款 ${sp} 笔、退款 ${sr} 笔将跳过）`,
+    importGo: '导入', imported: (p, r) => `已添加付款 ${p} 笔、退款 ${r} 笔`, nothingNew: '没有需要新增的内容',
+    manual: '手动录入', manualHelp: '金额填负数时将保存为退款交易，并直接打开关联界面（忽略商品行）。',
+    addItem: '+ 添加商品行', save: '保存', del: '删除', saved: '已保存',
+    mErrDate: '请填写采购日期', mErrAmt: '请用数字填写刷卡总额', mErrItem: n => `第 ${n} 行商品：需要品名和大于 0 的数量`,
     w: {
       notDate: x => `第 ${x.r} 行 A 列“${x.v}”不是日期，已跳过`,
       badPrice: x => `第 ${x.r} 行 ${x.c} 列单价不是数字 → 按 0 处理`,
       badWeight: x => `第 ${x.r} 行 ${x.c} 列重量“${x.v}”不是数字 → 按 0 处理`,
       mismatch: x => `第 ${x.r} 行刷卡金额 ₩${won(x.a)} ≠ 商品合计 ₩${won(x.b)}`,
-      orphan: x => `${x.d} 出口记录中的 ${x.id} ${x.n} ${x.q} 件在当前 Excel 中找不到（该行可能已被修改）`,
     },
-    readFail: m => `无法读取 Excel：${m}`,
-    noRows: 'A 列中没有找到日期行，请检查第一个工作表的格式。',
-    badBackup: '备份 Excel 中的恢复数据已损坏',
-    restoreAsk: n => `这是备份 Excel。要用它恢复吗？\n当前数据将替换为备份内容（出口记录 ${n} 条）。`,
-    qtyRange: (d, n, max) => `${d} ${n}：出口数量必须是 1~${max} 之间的整数`,
-    needDate: '请填写出口日期',
-    expAsk: (d, n, q) => `确认以 ${d} 出口记录 ${n} 项、共 ${q} 件吗？`,
-    delAsk: '要删除这条出口记录吗？相关商品会回到“未出口”。',
-    backupName: '采购出口_备份',
+    readFail: m => `无法读取文件：${m}`, noRows: 'A 列中没有找到日期行',
+    syncFail: m => `服务器操作失败，本次修改未生效。\n${m}`, loadFail: m => `无法从服务器加载数据：${m}`,
+    notBackup: '这不是完整备份文件', badBackup: '备份文件中的恢复数据已损坏',
+    restoreAsk: (p, i, r) => `要用备份恢复全部数据吗？\n服务器上的当前数据将全部删除，并替换为备份内容（付款 ${p} · 商品 ${i} · 退款 ${r}）。`,
+    restored: '已恢复', nothing: '没有可导出的数据',
+    shPay: '付款·商品', shRef: '退货·退款', shStock: '库存', shDone: '已出口', fileName: '采购出口',
   },
 };
-
-const LS_LANG = 'buyexport.lang';
-let lang = (() => { try { return localStorage.getItem(LS_LANG) || 'ko'; } catch { return 'ko'; } })();
+let lang = (() => { try { return localStorage.getItem('buyexport.lang') || 'ko'; } catch { return 'ko'; } })();
 const T = () => I18N[lang];
-const $ = id => document.getElementById(id);
-const EMPTY = () => ({ rows: [], warn: [], exports: [] });
-let state = EMPTY();   // { fileName, uploadedAt(ISO), rows, warn, exports: [{id,date,memo,lines:[{key,qty,name,itemDate,price,row}]}] }
 
-// Supabase: data lives in the cloud, guarded by row-level security (each login sees only its own rows).
-// The anon key is meant to be public; it can do nothing without a logged-in session.
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+const inRange = (d, a, b) => !!d && (!a || d >= a) && (!b || d <= b);
+const busy = async fn => { document.body.classList.add('busy'); try { return await fn(); } finally { document.body.classList.remove('busy'); } };
+const ok = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
+const sumBy = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+
 const sb = supabase.createClient('https://hymiapuytoelwerwhejj.supabase.co',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5bWlhcHV5dG9lbHdlcndoZWpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0Nzg3MzQsImV4cCI6MjExMDA1NDczNH0.xSW7RRwri0PW1-xUtbaQ-TTwudkLX_RRdSWZDdHJhEU');
-const ok = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
-const busy = async fn => { document.body.classList.add('busy'); try { return await fn(); } finally { document.body.classList.remove('busy'); } };
 
-async function loadCloud() {
-  const [led, exps] = await Promise.all([
-    sb.from('ledger').select('*').maybeSingle().then(ok),
-    sb.from('exports').select('id,date,memo,lines').order('id').then(ok),
+/* ---------- data ---------- */
+let P = [], I = [], F = [];           // payments, items, refunds (raw rows)
+let payById = new Map(), itemsByPay = new Map(), refByPay = new Map();
+const status = it => payById.get(it.payment_id)?.returned_on ? 'returned' : it.exported_on ? 'exported' : 'stock';
+
+async function fetchAll(table, cols) {   // PostgREST returns max 1000 rows per request
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const d = ok(await sb.from(table).select(cols).order('id').range(from, from + 999));
+    out.push(...d);
+    if (d.length < 1000) return out;
+  }
+}
+async function loadAll() {
+  [P, I, F] = await Promise.all([
+    fetchAll('payments', 'id,pay_date,amount,note,src_key,src_row,returned_on'),
+    fetchAll('items', 'id,payment_id,name,qty,price,weight,exported_on'),
+    fetchAll('refunds', 'id,tx_date,amount,note,src_key,src_row,payment_id,return_date'),
   ]);
-  state = led ? { fileName: led.file_name, uploadedAt: led.uploaded_at, rows: led.rows, warn: led.warn, exports: exps } : { ...EMPTY(), exports: exps };
+  P.forEach(p => { p.amount = +p.amount; });
+  I.forEach(i => { i.qty = +i.qty; i.price = +i.price; i.weight = +i.weight; });
+  F.forEach(f => { f.amount = +f.amount; });
+  payById = new Map(P.map(p => [p.id, p]));
+  itemsByPay = new Map(); I.forEach(i => (itemsByPay.get(i.payment_id) || itemsByPay.set(i.payment_id, []).get(i.payment_id)).push(i));
+  refByPay = new Map(F.filter(f => f.payment_id).map(f => [f.payment_id, f]));
+  sel.stock.forEach(id => { const i = I.find(x => x.id === id); if (!i || status(i) !== 'stock') sel.stock.delete(id); });
+  sel.done.forEach(id => { const i = I.find(x => x.id === id); if (!i || status(i) !== 'exported') sel.done.delete(id); });
 }
-const saveLedger = s => sb.from('ledger').upsert({ file_name: s.fileName, uploaded_at: s.uploadedAt, rows: s.rows, warn: s.warn }).then(ok);
-const insertExports = list => list.length ? sb.from('exports').insert(list.map(e => ({ date: e.date, memo: e.memo || '', lines: e.lines }))).select('id,date,memo,lines').then(ok) : Promise.resolve([]);
+const reload = async () => { await busy(loadAll); renderAll(); };
 
-async function showSession(session) {
-  document.body.classList.toggle('out', !session);
-  if (!session) { state = EMPTY(); render(); return; }
-  try { await busy(loadCloud); } catch (err) { alert(T().loadFail(err.message)); }
-  render();
-}
-$('loginForm').onsubmit = async e => {
-  e.preventDefault();
-  $('loginErr').textContent = '';
-  const { error } = await busy(() => sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value }));
-  if (error) { $('loginErr').textContent = T().loginFail; return; }
-  $('password').value = '';
+/* ---------- filters ---------- */
+const flt = {
+  pay: { from: '', to: '', q: '', cats: new Set(), ps: 'all' },
+  stock: { from: '', to: '', q: '', cats: new Set(), sort: 'asc' },
+  done: { from: '', to: '', ef: '', et: '', q: '', cats: new Set(), sort: 'desc' },
+  ref: { from: '', to: '', rs: 'all' },
 };
-$('logout').onclick = () => sb.auth.signOut();
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
-const nm = n => n || T().unknown;
+const sel = { stock: new Set(), done: new Set() };
+const cats = () => [...new Set(I.map(i => i.name || ''))].sort((a, b) => a.localeCompare(b));
+const catLabel = c => c || T().noItems;
+const itemMatch = (i, f) => (!f.cats.size || f.cats.has(i.name || '')) && (!f.q || (i.name || '').toLowerCase().includes(f.q.toLowerCase()));
+
+function filterBar(el, key, parts) {
+  const t = T(), f = flt[key];
+  const date = (a, b, label) => `<div class="f"><span>${label}</span><div class="row"><input type="date" data-k="${a}" value="${f[a]}"> ~ <input type="date" data-k="${b}" value="${f[b]}"></div></div>`;
+  const html = parts.map(p => {
+    if (p === 'date') return date('from', 'to', t.payDate);
+    if (p === 'edate') return date('ef', 'et', t.exportDate);
+    if (p === 'q') return `<label class="f"><span>${t.name}</span><input type="search" data-k="q" value="${esc(f.q)}" placeholder="${t.search}"></label>`;
+    if (p === 'cats') return `<div class="f"><span>${t.cat}</span><details class="multi"><summary>${f.cats.size ? t.catN(f.cats.size) : t.catAll}</summary><div class="opts">
+        <div class="tools"><button type="button" class="btn ghost sm" data-cats="all">${t.selectAll}</button><button type="button" class="btn ghost sm" data-cats="none">${t.clear}</button></div>
+        ${cats().map(c => `<label><input type="checkbox" value="${esc(c)}" ${f.cats.has(c) ? 'checked' : ''}> ${esc(catLabel(c))}</label>`).join('')}</div></details></div>`;
+    if (p === 'sort') return `<label class="f"><span>${t.sort}</span><select data-k="sort"><option value="asc" ${f.sort === 'asc' ? 'selected' : ''}>${t.oldFirst}</option><option value="desc" ${f.sort === 'desc' ? 'selected' : ''}>${t.newFirst}</option></select></label>`;
+    if (p === 'ps') return `<label class="f"><span>${t.payStatus}</span><select data-k="ps">${[['all', t.psAll], ['stock', t.psStock], ['done', t.psDone], ['ret', t.psRet], ['none', t.psNone]].map(([v, l]) => `<option value="${v}" ${f.ps === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+    if (p === 'rs') return `<label class="f"><span>${t.refStatus}</span><select data-k="rs">${[['all', t.rfAll], ['pend', t.rfPend], ['done', t.rfDone]].map(([v, l]) => `<option value="${v}" ${f.rs === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+  }).join('');
+  const open = el.querySelector('details.multi')?.open;
+  el.innerHTML = html;
+  if (open && el.querySelector('details.multi')) el.querySelector('details.multi').open = true;
+  el.querySelectorAll('[data-k]').forEach(inp => inp.oninput = () => { f[inp.dataset.k] = inp.value; RENDER[key](false); });
+  el.querySelectorAll('.multi input[type=checkbox]').forEach(cb => cb.onchange = () => { cb.checked ? f.cats.add(cb.value) : f.cats.delete(cb.value); RENDER[key](true); });
+  el.querySelectorAll('[data-cats]').forEach(b => b.onclick = () => { f.cats = b.dataset.cats === 'all' ? new Set(cats()) : new Set(); RENDER[key](true); });
+}
+document.addEventListener('click', e => { document.querySelectorAll('details.multi[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; }); });
+
+/* ---------- selectable tables: click / drag / select-all ---------- */
+function bindSelect(table, key, onChange) {
+  let drag = null;
+  const rows = () => [...table.querySelectorAll('tbody tr[data-id]')];
+  const setRow = (tr, on) => { const id = +tr.dataset.id; on ? sel[key].add(id) : sel[key].delete(id); tr.classList.toggle('sel', on); tr.querySelector('input').checked = on; };
+  const paint = to => { const rs = rows(), a = Math.min(drag.from, to), b = Math.max(drag.from, to); rs.forEach((tr, k) => setRow(tr, k >= a && k <= b ? drag.on : drag.before[k])); onChange(); };
+  table.onpointerdown = e => {
+    if (e.button !== 0) return;
+    const tr = e.target.closest('tbody tr[data-id]'); if (!tr) return;
+    const rs = rows();
+    drag = { from: rs.indexOf(tr), on: !sel[key].has(+tr.dataset.id), before: rs.map(r => sel[key].has(+r.dataset.id)) };
+    paint(drag.from);
+  };
+  table.onpointerover = e => { if (!drag) return; const tr = e.target.closest('tbody tr[data-id]'); if (tr) paint(rows().indexOf(tr)); };
+  addEventListener('pointerup', () => drag = null);
+  table.onclick = e => {
+    if (e.target.matches('tbody input[type=checkbox]') && e.detail) e.preventDefault();
+    if (e.target.matches('thead input[type=checkbox]')) { rows().forEach(tr => setRow(tr, e.target.checked)); onChange(); }
+  };
+}
+
+/* ---------- render: payments ---------- */
+const open = new Set();
+function payList() {
+  const f = flt.pay;
+  return P.filter(p => {
+    if (!inRange(p.pay_date, f.from, f.to)) return false;
+    const its = itemsByPay.get(p.id) || [];
+    if ((f.q || f.cats.size) && !its.some(i => itemMatch(i, f))) return false;
+    if (f.ps === 'ret') return !!p.returned_on;
+    if (f.ps === 'none') return !its.length;
+    if (f.ps === 'stock') return !p.returned_on && its.some(i => !i.exported_on);
+    if (f.ps === 'done') return !p.returned_on && its.length && its.every(i => i.exported_on);
+    return true;
+  }).sort((a, b) => b.pay_date.localeCompare(a.pay_date) || b.id - a.id);
+}
+function payStatusCell(p) {
+  const t = T(), its = itemsByPay.get(p.id) || [];
+  if (p.returned_on) { const r = refByPay.get(p.id); return `<span class="tag ret">${t.retTag(p.returned_on)}</span>${r ? ` <span class="muted">${t.refundOf(won(-r.amount))}</span>` : ''}`; }
+  if (!its.length) return `<span class="tag">${t.noItems}</span>`;
+  const s = its.filter(i => !i.exported_on).length, e = its.length - s;
+  return [s && `<span class="tag stock">${t.st.stock} ${s}</span>`, e && `<span class="tag exp">${t.st.exported} ${e}</span>`].filter(Boolean).join(' ');
+}
+function itemRowsTable(p) {
+  const t = T(), its = itemsByPay.get(p.id) || [];
+  if (!its.length) return `<p class="muted" style="margin:8px 0 0">${t.noItems}${p.note ? ' · ' + esc(p.note) : ''}</p>`;
+  return `<table><thead><tr><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th><th>${t.status}</th><th>${t.exportDate}</th></tr></thead><tbody>` +
+    its.map(i => { const s = status(i); return `<tr><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td><td><span class="tag ${s === 'stock' ? 'stock' : s === 'exported' ? 'exp' : 'ret'}">${t.st[s]}</span></td><td>${i.exported_on || ''}</td></tr>`; }).join('') + '</tbody></table>';
+}
+function renderPay(refreshBar = true) {
+  const t = T();
+  if (refreshBar) filterBar($('fPay'), 'pay', ['date', 'cats', 'q', 'ps']);
+  const list = payList();
+  $('paySum').innerHTML = t.paySum(won(list.length), won(sumBy(list, p => p.amount))) + ` · <span class="muted">${t.expandHint}</span>`;
+  $('payTable').innerHTML = `<thead><tr><th>${t.payDate}</th><th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th class="n">${t.items}</th><th>${t.status}</th><th>${t.note}</th></tr></thead><tbody>` +
+    (list.map(p => `<tr class="${p.returned_on ? 'ret' : ''}"><td>${p.pay_date}</td><td class="n">${p.src_row ?? ''}</td>` +
+      `<td class="n"><button class="linkbtn" data-open="${p.id}" aria-expanded="${open.has(p.id)}">₩${won(p.amount)}</button></td>` +
+      `<td class="n">${(itemsByPay.get(p.id) || []).length}</td><td>${payStatusCell(p)}</td><td class="wrap">${esc(p.note)}</td></tr>` +
+      (open.has(p.id) ? `<tr class="sub"><td colspan="6">${itemRowsTable(p)}</td></tr>` : '')).join('') ||
+    `<tr><td colspan="6" class="empty">${t.none}</td></tr>`) + '</tbody>';
+  $('payTable').querySelectorAll('[data-open]').forEach(b => b.onclick = () => { const id = +b.dataset.open; open.has(id) ? open.delete(id) : open.add(id); renderPay(false); });
+}
+$('payXlsx').onclick = () => {
+  const t = T();
+  const rows = payList().slice().reverse().flatMap(p => { const its = itemsByPay.get(p.id) || [], r = refByPay.get(p.id);
+    const base = { [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.note]: p.note, [t.returnDate]: p.returned_on || '', [t.refAmt]: r ? r.amount : '' };
+    return its.length ? its.map(i => ({ ...base, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight, [t.status]: t.st[status(i)], [t.exportDate]: i.exported_on || '' })) : [base]; });
+  xlsxOut(rows, t.shPay);
+};
+
+/* ---------- render: stock / exported ---------- */
+const itemList = (key) => {
+  const f = flt[key], want = key === 'stock' ? 'stock' : 'exported';
+  const list = I.filter(i => status(i) === want && itemMatch(i, f) && inRange(payById.get(i.payment_id).pay_date, f.from, f.to) && (key !== 'done' || inRange(i.exported_on, f.ef, f.et)));
+  const d = i => key === 'done' && f.sort === 'desc' ? i.exported_on + payById.get(i.payment_id).pay_date : payById.get(i.payment_id).pay_date;
+  return list.sort((a, b) => (f.sort === 'asc' ? 1 : -1) * (d(a).localeCompare(d(b)) || a.id - b.id));
+};
+const selTotals = (ids) => { const its = I.filter(i => ids.has(i.id)); return { n: its.length, q: sumBy(its, i => i.qty), a: sumBy(its, i => i.qty * i.price), w: sumBy(its, i => i.weight) }; };
+function itemTable(table, key, list) {
+  const t = T(), done = key === 'done';
+  table.innerHTML = `<thead><tr><th><input type="checkbox" aria-label="${t.selectAll}" ${list.length && list.every(i => sel[key].has(i.id)) ? 'checked' : ''}></th>${done ? `<th>${t.exportDate}</th>` : ''}<th>${t.payDate}</th><th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th></tr></thead><tbody>` +
+    (list.map(i => { const p = payById.get(i.payment_id), on = sel[key].has(i.id);
+      return `<tr data-id="${i.id}" class="${on ? 'sel' : ''}"><td><input type="checkbox" ${on ? 'checked' : ''} aria-label="${t.pick}"></td>${done ? `<td>${i.exported_on}</td>` : ''}<td>${p.pay_date}</td><td class="n">${p.src_row ?? ''}</td><td class="n">₩${won(p.amount)}</td><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td></tr>`; }).join('') ||
+    `<tr><td colspan="${done ? 10 : 9}" class="empty">${t.none}</td></tr>`) + '</tbody>';
+}
+function renderStock(refreshBar = true) {
+  const t = T();
+  if (refreshBar) filterBar($('fStock'), 'stock', ['cats', 'q', 'date', 'sort']);
+  const all = I.filter(i => status(i) === 'stock');
+  const oldest = all.reduce((m, i) => { const d = payById.get(i.payment_id).pay_date; return !m || d < m ? d : m; }, '');
+  $('stockStats').innerHTML = [[t.sStockQty, won(sumBy(all, i => i.qty)) + ' ' + t.pcs, 1], [t.sStockAmt, '₩' + won(sumBy(all, i => i.qty * i.price))], [t.sStockW, kg(sumBy(all, i => i.weight)) + ' kg'], [t.sOldest, oldest || '—']]
+    .map(([k, v, hl]) => `<div class="stat${hl ? ' hl' : ''}"><span>${k}</span><b>${v}</b></div>`).join('');
+  const list = itemList('stock');
+  itemTable($('stockTable'), 'stock', list);
+  stockSelChanged(list.length);
+}
+function stockSelChanged(shown = $('stockTable').querySelectorAll('tbody tr[data-id]').length) {
+  const s = selTotals(sel.stock), t = T();
+  $('stockSel').innerHTML = `${t.shown(won(shown))} · ` + t.selSum(won(s.n), won(s.q), won(s.a), kg(s.w));
+  $('exportPanelSum').innerHTML = t.selSum(won(s.n), won(s.q), won(s.a), kg(s.w));
+  if (!s.n) $('exportPanel').hidden = true;
+}
+function renderDone(refreshBar = true) {
+  if (refreshBar) filterBar($('fDone'), 'done', ['cats', 'q', 'date', 'edate', 'sort']);
+  const list = itemList('done');
+  itemTable($('doneTable'), 'done', list);
+  doneSelChanged(list.length);
+}
+function doneSelChanged(shown = $('doneTable').querySelectorAll('tbody tr[data-id]').length) {
+  const s = selTotals(sel.done), t = T();
+  $('doneSel').innerHTML = `${t.shown(won(shown))} · ` + t.selSum(won(s.n), won(s.q), won(s.a), kg(s.w));
+}
+bindSelect($('stockTable'), 'stock', () => stockSelChanged());
+bindSelect($('doneTable'), 'done', () => doneSelChanged());
+
+$('stockExport').onclick = () => { if (!sel.stock.size) return alert(T().needSel); $('expDate').value ||= today(); $('exportPanel').hidden = false; stockSelChanged(); };
+$('exportCancel').onclick = () => $('exportPanel').hidden = true;
+$('exportGo').onclick = async () => {
+  const t = T(), d = $('expDate').value, ids = [...sel.stock];
+  if (!d) return alert(t.needDate);
+  if (!ids.length) return alert(t.needSel);
+  if (!confirm(t.exportAsk(won(ids.length), d))) return;
+  try {
+    const n = await busy(() => sb.rpc('bulk_export', { ids, d }).then(ok));
+    sel.stock.clear(); $('exportPanel').hidden = true;
+    await reload(); alert(t.exported(won(n)));
+  } catch (err) { alert(t.syncFail(err.message)); }
+};
+$('doneUndo').onclick = async () => {
+  const t = T(), ids = [...sel.done];
+  if (!ids.length) return alert(t.needSel);
+  if (!confirm(t.undoAsk(won(ids.length)))) return;
+  try { await busy(() => sb.rpc('undo_export', { ids }).then(ok)); sel.done.clear(); await reload(); }
+  catch (err) { alert(t.syncFail(err.message)); }
+};
+const itemXlsxRows = (list, done) => { const t = T(); return list.map(i => { const p = payById.get(i.payment_id);
+  return { ...(done ? { [t.exportDate]: i.exported_on } : {}), [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight }; }); };
+$('stockXlsx').onclick = () => xlsxOut(itemXlsxRows(itemList('stock'), false), T().shStock);
+$('doneXlsx').onclick = () => xlsxOut(itemXlsxRows(itemList('done'), true), T().shDone);
+
+/* ---------- render: refunds ---------- */
+let linking = null;   // refund id being linked
+function refList() {
+  const f = flt.ref;
+  return F.filter(r => inRange(r.tx_date, f.from, f.to) && (f.rs === 'all' || (f.rs === 'pend') === !r.payment_id))
+    .sort((a, b) => (!!a.payment_id - !!b.payment_id) || b.tx_date.localeCompare(a.tx_date));   // pending first, newest first
+}
+function renderRef(refreshBar = true) {
+  const t = T();
+  if (refreshBar) filterBar($('fRef'), 'ref', ['date', 'rs']);
+  const list = refList();
+  $('refSum').textContent = t.refSum(won(F.length), won(F.filter(r => !r.payment_id).length));
+  $('refTable').innerHTML = `<thead><tr><th>${t.refStatus}</th><th>${t.txDate}</th><th class="n">${t.row}</th><th class="n">${t.refAmt}</th><th>${t.note}</th><th>${t.linkedPay}</th><th>${t.returnDate}</th><th class="n">${t.diff}</th></tr></thead><tbody>` +
+    (list.map(r => { const p = r.payment_id && payById.get(r.payment_id);
+      return `<tr class="${p ? '' : 'ret'}"><td>${p ? `<span class="tag exp">${t.linked}</span>` : `<button class="btn sm" data-link="${r.id}">${t.linkBtn}</button>`}</td><td>${r.tx_date}</td><td class="n">${r.src_row ?? ''}</td><td class="n">₩${won(r.amount)}</td><td class="wrap">${esc(r.note)}</td>` +
+        `<td>${p ? `${p.pay_date} · ₩${won(p.amount)}` : ''}</td><td>${r.return_date || ''}</td><td class="n">${p ? '₩' + won(p.amount + r.amount) : ''}</td></tr>`; }).join('') ||
+    `<tr><td colspan="8" class="empty">${t.none}</td></tr>`) + '</tbody>';
+  $('refTable').querySelectorAll('[data-link]').forEach(b => b.onclick = () => openLink(+b.dataset.link));
+  renderLink();
+}
+const lk = { from: '', to: '', match: true, pick: null, date: '' };
+function openLink(id) {
+  const r = F.find(x => x.id === id); if (!r) return;
+  const d = new Date(r.tx_date); d.setDate(d.getDate() - 60);
+  Object.assign(lk, { from: d.toISOString().slice(0, 10), to: r.tx_date, match: true, pick: null, date: r.tx_date });
+  linking = id; renderLink(); $('linkCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function renderLink() {
+  const t = T(), r = F.find(x => x.id === linking && !x.payment_id);
+  $('linkCard').hidden = !r; if (!r) return;
+  const cands = P.filter(p => !p.returned_on && inRange(p.pay_date, lk.from, lk.to) && (!lk.match || Math.abs(p.amount + r.amount) < 1))
+    .sort((a, b) => b.pay_date.localeCompare(a.pay_date));
+  const blocked = lk.pick && (itemsByPay.get(lk.pick) || []).some(i => i.exported_on);
+  $('linkCard').innerHTML = `<h2>${t.linkTitle(r.tx_date, won(r.amount))}</h2><p class="muted">${t.linkHelp}</p>
+    <div class="filters"><div class="f"><span>${t.payDate}</span><div class="row"><input type="date" id="lkFrom" value="${lk.from}"> ~ <input type="date" id="lkTo" value="${lk.to}"></div></div>
+    <label class="f"><span>&nbsp;</span><span class="row"><input type="checkbox" id="lkMatch" ${lk.match ? 'checked' : ''}> ${t.amtMatch} (₩${won(-r.amount)})</span></label></div>
+    <div class="scroll" style="max-height:40vh"><table><thead><tr><th>${t.pick}</th><th>${t.payDate}</th><th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th>${t.items}</th><th>${t.status}</th></tr></thead><tbody>
+    ${cands.map(p => `<tr><td><input type="radio" name="lkPick" value="${p.id}" ${lk.pick === p.id ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td><td class="n">${p.src_row ?? ''}</td><td class="n">₩${won(p.amount)}</td>
+      <td class="wrap">${esc((itemsByPay.get(p.id) || []).map(i => `${catLabel(i.name)}×${won(i.qty)}`).join(', ') || p.note || t.noItems)}</td><td>${payStatusCell(p)}</td></tr>`).join('') || `<tr><td colspan="6" class="empty">${t.none}</td></tr>`}
+    </tbody></table></div>
+    ${blocked ? `<div class="warnlist" style="padding-left:14px">${t.linkBlocked}</div>` : ''}
+    <div class="panel" style="margin:12px 0 0"><span>${t.returnDate}</span><input type="date" id="lkDate" value="${lk.date}">
+      <button class="btn" id="lkGo" ${blocked ? 'disabled' : ''}>${t.linkGo}</button><button class="btn ghost" id="lkCancel">${t.cancel}</button></div>`;
+  $('lkFrom').oninput = e => { lk.from = e.target.value; renderLink(); };
+  $('lkTo').oninput = e => { lk.to = e.target.value; renderLink(); };
+  $('lkMatch').onchange = e => { lk.match = e.target.checked; renderLink(); };
+  $('lkDate').oninput = e => lk.date = e.target.value;
+  $('linkCard').querySelectorAll('[name=lkPick]').forEach(x => x.onchange = () => { lk.pick = +x.value; renderLink(); });
+  $('lkCancel').onclick = () => { linking = null; renderLink(); };
+  $('lkGo').onclick = async () => {
+    if (!lk.pick) return alert(t.linkNoPick);
+    if (!lk.date) return alert(t.needDate);
+    const p = payById.get(lk.pick);
+    if (!confirm(t.linkAsk(p.pay_date, won(p.amount), lk.date))) return;
+    try { await busy(() => sb.rpc('process_return', { refund_id: r.id, pay_id: p.id, d: lk.date }).then(ok)); linking = null; await reload(); }
+    catch (err) { alert(err.message.includes('HAS_EXPORTED_ITEMS') ? t.linkBlocked : t.syncFail(err.message)); }
+  };
+}
+$('refXlsx').onclick = () => { const t = T(); xlsxOut(refList().map(r => { const p = r.payment_id && payById.get(r.payment_id);
+  return { [t.txDate]: r.tx_date, [t.row]: r.src_row ?? '', [t.refAmt]: r.amount, [t.note]: r.note, [t.refStatus]: p ? t.linked : t.pending,
+    [t.linkedPay + ' ' + t.payDate]: p ? p.pay_date : '', [t.linkedPay + ' ' + t.cardAmt]: p ? p.amount : '', [t.returnDate]: r.return_date || '', [t.diff]: p ? p.amount + r.amount : '',
+    [t.items]: p ? (itemsByPay.get(p.id) || []).map(i => `${i.name}×${i.qty}`).join(', ') : '' }; }), t.shRef); };
+
+/* ---------- input: Excel upload + manual ---------- */
+let pending = null;
+$('xlFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const t = T();
+  try {
+    const wb = XLSX.read(await f.arrayBuffer());
+    const parsed = parseSheet(wb.Sheets[wb.SheetNames[0]]);
+    if (!parsed.payments.length && !parsed.refunds.length) throw new Error(t.noRows);
+    const pk = new Set(P.map(p => p.src_key)), rk = new Set(F.map(r => r.src_key));
+    pending = { payments: parsed.payments.filter(p => !pk.has(p.src_key)), refunds: parsed.refunds.filter(r => !rk.has(r.src_key)), warn: parsed.warn,
+      skipP: parsed.payments.filter(p => pk.has(p.src_key)).length, skipR: parsed.refunds.filter(r => rk.has(r.src_key)).length };
+    renderPreview();
+  } catch (err) { alert(t.readFail(err.message)); }
+};
+function renderPreview() {
+  const t = T(), x = pending;
+  if (!x) { $('xlPreview').innerHTML = ''; return; }
+  const any = x.payments.length || x.refunds.length;
+  $('xlPreview').innerHTML = `<p>${t.preview(won(x.payments.length), won(x.refunds.length), won(x.skipP), won(x.skipR))}</p>` +
+    (x.warn.length ? `<ul class="warnlist">${x.warn.map(w => `<li>${esc(T().w[w.k](w))}</li>`).join('')}</ul>` : '') +
+    (any ? `<button class="btn" id="xlGo">${t.importGo}</button> <button class="btn ghost" id="xlCancel">${t.cancel}</button>` : `<p class="muted">${t.nothingNew}</p>`);
+  if (!any) return;
+  $('xlCancel').onclick = () => { pending = null; renderPreview(); };
+  $('xlGo').onclick = async () => {
+    try {
+      let np = 0, nr = 0;
+      await busy(async () => {
+        for (let k = 0; k < Math.max(x.payments.length, 1); k += 300) {   // chunks keep each request small
+          const res = ok(await sb.rpc('import_batch', { p: { payments: x.payments.slice(k, k + 300), refunds: k ? [] : x.refunds } }));
+          np += res.payments; nr += res.refunds;
+        }
+      });
+      pending = null; await reload(); alert(t.imported(won(np), won(nr)));
+      if (F.some(r => !r.payment_id)) showTab('ref');
+    } catch (err) { alert(t.syncFail(err.message)); }
+  };
+}
+
+function itemRow() {
+  const t = T(), tr = document.createElement('tr');
+  tr.innerHTML = `<td><input type="text" list="nameList" aria-label="${t.name}"></td><td><input type="number" min="0" step="any" aria-label="${t.qty}"></td><td><input type="number" min="0" step="any" aria-label="${t.price}"></td><td><input type="number" min="0" step="any" aria-label="${t.weightCol}"></td><td><button type="button" class="btn ghost sm">${t.del}</button></td>`;
+  tr.querySelector('button').onclick = () => tr.remove();
+  $('mItems').append(tr);
+}
+$('mAdd').onclick = itemRow;
+$('manForm').onsubmit = async e => {
+  e.preventDefault();
+  const t = T(), err = m => $('mErr').textContent = m;
+  err('');
+  const date = $('mDate').value, amt = Number($('mAmt').value);
+  if (!date) return err(t.mErrDate);
+  if ($('mAmt').value === '' || !isFinite(amt)) return err(t.mErrAmt);
+  const items = [];
+  const trs = [...$('mItems').children];
+  for (let k = 0; k < trs.length; k++) {
+    const [n, q, p, w] = [...trs[k].querySelectorAll('input')].map(i => i.value.trim());
+    if (!n && !q && !p && !w) continue;
+    if (!n || !(Number(q) > 0)) return err(t.mErrItem(k + 1));
+    items.push({ name: n, qty: Number(q), price: Number(p) || 0, weight: Number(w) || 0 });
+  }
+  const note = $('mNote').value.trim();
+  const body = amt < 0 ? { refunds: [{ tx_date: date, amount: amt, note }] } : { payments: [{ pay_date: date, amount: amt, note, items }] };
+  try {
+    await busy(() => sb.rpc('import_batch', { p: body }).then(ok));
+    $('manForm').reset(); $('mItems').innerHTML = ''; itemRow(); itemRow();
+    await reload();
+    if (amt < 0) { const r = F.filter(x => !x.payment_id && x.tx_date === date && x.amount === amt).pop(); showTab('ref'); if (r) openLink(r.id); }
+    else alert(t.saved);
+  } catch (e2) { err(t.syncFail(e2.message)); }
+};
+
+/* ---------- Excel out, backup, restore ---------- */
+function xlsxOut(rows, sheet) {
+  const t = T();
+  if (!rows.length) return alert(t.nothing);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheet);
+  XLSX.writeFile(wb, `${t.fileName}_${sheet.replace(/[\\/?*[\]:·]/g, '_')}_${today()}.xlsx`);
+}
+const BACKUP_SHEET = '_backup';
+$('backup').onclick = () => {
+  const t = T();
+  if (!P.length && !F.length) return alert(t.nothing);
+  const json = JSON.stringify({ v: 2, payments: P, items: I, refunds: F }), chunks = [];
+  for (let k = 0; k < json.length; k += 30000) chunks.push([json.slice(k, k + 30000)]);   // Excel cell limit 32,767 chars
+  const flat = P.flatMap(p => { const its = itemsByPay.get(p.id) || []; const b = { [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.note]: p.note, [t.returnDate]: p.returned_on || '' };
+    return its.length ? its.map(i => ({ ...b, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.weightCol]: i.weight, [t.status]: t.st[status(i)], [t.exportDate]: i.exported_on || '' })) : [b]; });
+  const refs = F.map(r => ({ [t.txDate]: r.tx_date, [t.refAmt]: r.amount, [t.note]: r.note, [t.linkedPay]: r.payment_id ? payById.get(r.payment_id)?.pay_date : '', [t.returnDate]: r.return_date || '' }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flat), t.shPay);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(refs), t.shRef);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(chunks), BACKUP_SHEET);
+  wb.Workbook = { Sheets: [{ Hidden: 0 }, { Hidden: 0 }, { Hidden: 1 }] };
+  XLSX.writeFile(wb, `${t.fileName}_backup_${today()}.xlsx`);
+};
+$('restoreFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const t = T();
+  try {
+    const wb = XLSX.read(await f.arrayBuffer());
+    if (!wb.SheetNames.includes(BACKUP_SHEET)) return alert(t.notBackup);
+    let d; try { d = JSON.parse(XLSX.utils.sheet_to_json(wb.Sheets[BACKUP_SHEET], { header: 1, raw: true }).map(r => r[0] ?? '').join('')); } catch { d = null; }
+    if (!d || d.v !== 2 || !Array.isArray(d.payments) || !Array.isArray(d.items) || !Array.isArray(d.refunds)) return alert(t.badBackup);
+    if (!confirm(t.restoreAsk(won(d.payments.length), won(d.items.length), won(d.refunds.length)))) return;
+    await busy(() => sb.rpc('restore_all', { data: { payments: d.payments, items: d.items, refunds: d.refunds } }).then(ok));
+    open.clear(); sel.stock.clear(); sel.done.clear();
+    await reload(); alert(t.restored);
+  } catch (err) { alert(t.syncFail(err.message)); }
+};
+
+/* ---------- shell ---------- */
+const RENDER = { pay: renderPay, stock: renderStock, done: renderDone, ref: renderRef };
+function showTab(tab) {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.tab === tab));
+  ['pay', 'stock', 'done', 'ref', 'input'].forEach(k => $('tab-' + k).hidden = k !== tab);
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+function renderAll() {
+  const t = T(), pend = F.filter(r => !r.payment_id).length;
+  $('meta').textContent = t.meta(won(P.length), won(I.length));
+  $('cntStock').textContent = won(I.filter(i => status(i) === 'stock').length);
+  $('cntDone').textContent = won(I.filter(i => status(i) === 'exported').length);
+  $('cntRef').textContent = pend || '';
+  $('cntRef').className = 'cnt' + (pend ? ' alert' : '');
+  $('cntRef').hidden = !pend;
+  $('refundBanner').hidden = !pend;
+  $('refundBanner').innerHTML = `<span>${t.banner(pend)}</span><button class="btn sm" id="goRef">${t.goRef}</button>`;
+  if (pend) $('goRef').onclick = () => showTab('ref');
+  $('nameList').innerHTML = cats().filter(Boolean).map(c => `<option value="${esc(c)}">`).join('');
+  renderPay(); renderStock(); renderDone(); renderRef(); renderPreview();
+}
 
 function setLang(l) {
   lang = l;
-  try { localStorage.setItem(LS_LANG, l); } catch {}
+  try { localStorage.setItem('buyexport.lang', l); } catch {}
   document.documentElement.lang = l === 'zh' ? 'zh-CN' : 'ko';
   document.title = T().title;
   document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = T()[e.dataset.i18n]);
-  document.querySelectorAll('[data-i18n-ph]').forEach(e => e.placeholder = T()[e.dataset.i18nPh]);
   document.querySelectorAll('.lang button').forEach(b => b.setAttribute('aria-pressed', b.dataset.lang === l));
-  render();
+  $('mItems').querySelectorAll('tr').forEach(tr => { tr.querySelector('button').textContent = T().del; });
+  if (!document.body.classList.contains('out')) renderAll();
 }
 document.querySelectorAll('.lang button').forEach(b => b.onclick = () => setLang(b.dataset.lang));
 
-// One upload button: a backup Excel (has the hidden BACKUP_SHEET) restores everything; any other Excel is the purchase sheet.
-const BACKUP_SHEET = '_backup';
-$('file').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
-  const t = T();
-  let wb;
-  try { wb = XLSX.read(await f.arrayBuffer()); } catch (err) { e.target.value = ''; return alert(t.readFail(err.message)); }
-  try {
-    if (wb.SheetNames.includes(BACKUP_SHEET)) {
-      let s;
-      try { s = JSON.parse(XLSX.utils.sheet_to_json(wb.Sheets[BACKUP_SHEET], { header: 1, raw: true }).map(r => r[0] ?? '').join('')); } catch { s = null; }
-      if (!s || !Array.isArray(s.rows) || !Array.isArray(s.exports)) throw new Error(t.badBackup);
-      if (!confirm(t.restoreAsk(s.exports.length))) return;
-      const next = { fileName: s.fileName, uploadedAt: s.uploadedAt || new Date().toISOString(), rows: s.rows, warn: s.warn || [] };
-      // insert the backup's exports first, then drop the old ones, so a failure midway never leaves zero records
-      await busy(async () => {
-        await saveLedger(next);
-        const added = await insertExports(s.exports);
-        const old = state.exports.map(x => x.id).filter(id => !added.some(a => a.id === id));
-        if (old.length) await sb.from('exports').delete().in('id', old).then(ok);
-        state = { ...next, exports: added };
-      });
-    } else {
-      const { rows, warn } = parseSheet(wb.Sheets[wb.SheetNames[0]]);
-      if (!rows.length) return alert(t.readFail(t.noRows));
-      const next = { fileName: f.name, uploadedAt: new Date().toISOString(), rows, warn };
-      await busy(() => saveLedger(next));
-      Object.assign(state, next);
-    }
-    render();
-  } catch (err) { alert(t.syncFail(err.message)); }
-  finally { e.target.value = ''; }
+$('loginForm').onsubmit = async e => {
+  e.preventDefault(); $('loginErr').textContent = '';
+  const { error } = await busy(() => sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value }));
+  if (error) return $('loginErr').textContent = T().loginFail;
+  $('password').value = '';
 };
+$('logout').onclick = () => sb.auth.signOut();
 
-// Backup = readable sheets (unexported, export log) + hidden sheet holding the full state as JSON chunks
-$('backup').onclick = () => {
-  const t = T();
-  if (!state.rows.length && !state.exports.length) return alert(t.nothing);
-  const todo = withRemaining(state.rows, state.exports).filter(l => l.left > 0).map(l => ({
-    [t.buyDate]: l.date, [t.row]: l.row, [t.name]: nm(l.name), [t.price]: l.price, [t.bought]: l.qty, [t.sent]: l.sent, [t.left]: l.left, [t.leftW]: Math.round(l.leftW * 100) / 100 }));
-  const log = state.exports.flatMap(e => e.lines.map(l => ({
-    [t.expDate]: e.date, [t.note]: e.memo, [t.buyDate]: l.itemDate, [t.row]: l.row ?? '', [t.name]: nm(l.name), [t.price]: l.price, [t.qty]: l.qty })));
-  const json = JSON.stringify(state), chunks = [];
-  for (let i = 0; i < json.length; i += 30000) chunks.push([json.slice(i, i + 30000)]);   // Excel cell limit is 32,767 chars
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(todo), t.tabTodo);
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(log), t.tabExp);
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(chunks), BACKUP_SHEET);
-  wb.Workbook = { Sheets: [{ Hidden: 0 }, { Hidden: 0 }, { Hidden: 1 }] };
-  XLSX.writeFile(wb, `${t.backupName}_${today()}.xlsx`);
-};
-
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-  ['todo', 'buy', 'exp'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
-});
-
-const inRange = (d, from, to) => (!from || d >= from) && (!to || d <= to);
-const match = (name, q) => !q || nm(name).toLowerCase().includes(q.toLowerCase());
-const fmtTime = iso => { const d = new Date(iso); return isNaN(d) ? (iso || '') : d.toLocaleString(lang === 'zh' ? 'zh-CN' : 'ko-KR', { dateStyle: 'medium', timeStyle: 'short' }); };
-const warnText = x => typeof x === 'string' ? x : T().w[x.k](x);
-
-function render() {
-  $('meta').textContent = state.fileName ? T().meta(state.fileName, fmtTime(state.uploadedAt), won(state.rows.length)) : T().noFile;
-  // orphans: export records whose purchase line is no longer in the sheet
-  const keys = new Set(state.rows.flatMap(r => r.items.map(i => i.key)));
-  const orphans = state.exports.flatMap(e => e.lines.filter(l => !keys.has(l.key)).map(l => ({ k: 'orphan', d: e.date, id: l.itemDate, n: nm(l.name), q: l.qty })));
-  const w = [...orphans, ...(state.warn || [])];
-  $('warnBox').hidden = !w.length;
-  $('warnList').innerHTML = w.map(x => `<li>${esc(warnText(x))}</li>`).join('');
-  renderTodo(); renderBuy(); renderExp();
+async function showSession(session) {
+  document.body.classList.toggle('out', !session);
+  if (!session) { P = []; I = []; F = []; return; }
+  try { await busy(loadAll); } catch (err) { alert(T().loadFail(err.message)); }
+  renderAll();
 }
 
-function renderTodo() {
-  const t = T();
-  const lines = withRemaining(state.rows, state.exports).filter(l => l.left > 0);
-  const tot = lines.reduce((s, l) => (s.q += l.left, s.a += l.leftAmt, s.w += l.leftW, s), { q: 0, a: 0, w: 0 });
-  const oldest = lines.length ? lines.reduce((m, l) => l.date < m ? l.date : m, lines[0].date) : '—';
-  $('todoStats').innerHTML = [[t.sQty, won(tot.q) + ' ' + t.pcs, 1], [t.sAmt, '₩' + won(tot.a)], [t.sW, kg(tot.w) + ' kg'], [t.sOld, oldest]]
-    .map(([k, v, hl]) => `<div class="stat${hl ? ' hl' : ''}"><span>${k}</span><b>${v}</b></div>`).join('');
-
-  const by = {};
-  for (const l of lines) { const g = by[nm(l.name)] ||= { q: 0, a: 0, w: 0 }; g.q += l.left; g.a += l.leftAmt; g.w += l.leftW; }
-  const groups = Object.entries(by).sort((a, b) => b[1].a - a[1].a);
-  $('todoByName').innerHTML = `<thead><tr><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.amt}</th><th class="n">${t.weight}</th></tr></thead><tbody>` +
-    (groups.map(([n, g]) => `<tr><td class="wrap">${esc(n)}</td><td class="n">${won(g.q)}</td><td class="n">₩${won(g.a)}</td><td class="n">${kg(g.w)}</td></tr>`).join('') ||
-    `<tr><td colspan="4" class="empty">${state.rows.length ? t.allDone : t.needUpload}</td></tr>`) + '</tbody>';
-
-  const shown = lines.filter(l => inRange(l.date, $('tFrom').value, $('tTo').value) && match(l.name, $('tQ').value));
-  $('todoLines').innerHTML = `<thead><tr><th><input type="checkbox" id="all" aria-label="${t.selAll}"></th><th>${t.buyDate}</th><th class="n">${t.row}</th><th>${t.name}</th><th class="n">${t.price}</th><th class="n">${t.bought}</th><th class="n">${t.sent}</th><th class="n">${t.left}</th><th class="n">${t.sendQty}</th><th class="n">${t.leftW}</th></tr></thead><tbody>` +
-    (shown.map(l => `<tr class="${l.sent ? 'part' : ''}"><td><input type="checkbox" class="pick" data-key="${esc(l.key)}" aria-label="${t.sel}"></td><td>${l.date}</td><td class="n">${l.row}</td><td class="wrap">${esc(nm(l.name))}</td><td class="n">₩${won(l.price)}</td><td class="n">${won(l.qty)}</td><td class="n">${l.sent ? won(l.sent) : ''}</td><td class="n">${won(l.left)}</td>` +
-      `<td class="n"><input type="number" class="qty" min="1" max="${l.left}" value="${l.left}" data-key="${esc(l.key)}" aria-label="${t.sendQty}"></td><td class="n">${kg(l.leftW)}</td></tr>`).join('') ||
-    `<tr><td colspan="10" class="empty">${state.rows.length ? t.allDone : t.needUpload}</td></tr>`) + '</tbody>';
-  $('all').onchange = e => { document.querySelectorAll('.pick').forEach(c => c.checked = e.target.checked); pickChanged(); };
-  document.querySelectorAll('.pick').forEach(c => c.onchange = pickChanged);
-  pickChanged();
-}
-function pickChanged() {
-  const n = document.querySelectorAll('.pick:checked').length;
-  $('doExport').disabled = !n;
-  $('doExport').textContent = n ? T().doExportN(n) : T().doExport;
-}
-['tFrom', 'tTo', 'tQ'].forEach(id => $(id).oninput = renderTodo);
-$('expDate').value = today();
-
-// drag-select: press on a row, drag over others; every row in the range gets the first row's new state
-let drag = null;
-const picks = () => [...document.querySelectorAll('#todoLines .pick')];
-function paint(to) {
-  const all = picks(), a = Math.min(drag.from, to), b = Math.max(drag.from, to);
-  all.forEach((c, k) => c.checked = k >= a && k <= b ? drag.on : drag.before[k]);
-  pickChanged();
-}
-$('todoLines').addEventListener('pointerdown', e => {
-  if (e.button !== 0 || e.target.closest('input.qty')) return;
-  const box = e.target.closest('tbody tr')?.querySelector('.pick');
-  if (!box) return;
-  const all = picks();
-  drag = { from: all.indexOf(box), on: !box.checked, before: all.map(c => c.checked) };
-  paint(drag.from);
-});
-$('todoLines').addEventListener('pointerover', e => {
-  if (!drag) return;
-  const box = e.target.closest('tbody tr')?.querySelector('.pick');
-  if (box) paint(picks().indexOf(box));
-});
-addEventListener('pointerup', () => drag = null);
-// mouse click on the box itself was already handled by pointerdown; keep keyboard (detail 0) toggling native
-$('todoLines').addEventListener('click', e => { if (e.target.classList.contains('pick') && e.detail) e.preventDefault(); });
-
-$('doExport').onclick = async () => {
-  const t = T();
-  const byKey = Object.fromEntries(withRemaining(state.rows, state.exports).map(l => [l.key, l]));
-  const lines = [];
-  for (const c of document.querySelectorAll('.pick:checked')) {
-    const l = byKey[c.dataset.key];
-    const q = Number(document.querySelector(`.qty[data-key="${CSS.escape(c.dataset.key)}"]`).value);
-    if (!Number.isInteger(q) || q < 1 || q > l.left) return alert(t.qtyRange(l.date, nm(l.name), l.left));
-    lines.push({ key: l.key, qty: q, name: l.name, itemDate: l.date, price: l.price, row: l.row });
-  }
-  if (!$('expDate').value) return alert(t.needDate);
-  const q = lines.reduce((s, l) => s + l.qty, 0);
-  if (!confirm(t.expAsk($('expDate').value, lines.length, won(q)))) return;
-  try {
-    const [added] = await busy(() => insertExports([{ date: $('expDate').value, memo: $('expMemo').value.trim(), lines }]));
-    state.exports.push(added);
-    $('expMemo').value = '';
-    render();
-  } catch (err) { alert(t.syncFail(err.message)); }
-};
-
-function renderBuy() {
-  const t = T(), from = $('bFrom').value, to = $('bTo').value, q = $('bQ').value;
-  const done = exportedByKey(state.exports);
-  const rows = state.rows.filter(r => inRange(r.date, from, to) && (!q || r.items.some(i => match(i.name, q)) || r.notes.some(n => match(n, q))));
-  $('bSum').textContent = t.bSum(won(rows.length), won(rows.reduce((s, r) => s + r.amount, 0)));
-  const st = (s, n) => s >= n ? `<span class="tag done">${t.done}</span>` : s ? `<span class="tag">${won(s)} / ${won(n)}</span>` : '';
-  $('buyTable').innerHTML = `<thead><tr><th>${t.buyDate}</th><th class="n">${t.row}</th><th class="n">${t.card}</th><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.weight}</th><th>${t.status}</th></tr></thead><tbody>` +
-    (rows.slice().reverse().map(r => {
-      const its = r.items.length ? r.items : [null];
-      return its.map((i, k) => `<tr>${k ? '<td></td><td></td><td></td>' : `<td>${r.date}</td><td class="n">${r.row}</td><td class="n">₩${won(r.amount)}</td>`}` +
-        (i ? `<td class="wrap">${esc(nm(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">${kg(i.weight)}</td><td>${st(done[i.key] || 0, i.qty)}</td>`
-           : `<td class="wrap"><span class="tag ${r.notes.length ? '' : 'unk'}">${r.notes.length ? t.note : t.unknown}</span> ${esc(r.notes.join(', '))}</td><td></td><td></td><td></td><td></td>`) + `</tr>`).join('');
-    }).join('') || `<tr><td colspan="8" class="empty">${t.needUpload}</td></tr>`) + '</tbody>';
-}
-['bFrom', 'bTo', 'bQ'].forEach(id => $(id).oninput = renderBuy);
-
-function renderExp() {
-  const t = T();
-  const list = state.exports.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
-  $('expList').innerHTML = list.map(e => {
-    const q = e.lines.reduce((s, l) => s + l.qty, 0), a = e.lines.reduce((s, l) => s + l.qty * l.price, 0);
-    return `<div class="card"><details><summary><b>${e.date}</b><span>${t.expHead(e.lines.length, won(q), won(a))}</span>${e.memo ? `<span>· ${esc(e.memo)}</span>` : ''}</summary>
-      <div class="scroll"><table><thead><tr><th>${t.buyDate}</th><th class="n">${t.row}</th><th>${t.name}</th><th class="n">${t.price}</th><th class="n">${t.qty}</th></tr></thead><tbody>
-      ${e.lines.map(l => `<tr><td>${l.itemDate}</td><td class="n">${l.row ?? ''}</td><td class="wrap">${esc(nm(l.name))}</td><td class="n">₩${won(l.price)}</td><td class="n">${won(l.qty)}</td></tr>`).join('')}</tbody></table></div>
-      <p style="margin:14px 0 0"><button class="btn danger" data-del="${e.id}">${t.delExp}</button></p></details></div>`;
-  }).join('') || `<div class="card empty">${t.noExp}</div>`;
-  document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-    if (!confirm(T().delAsk)) return;
-    const id = Number(b.dataset.del);
-    try {
-      await busy(() => sb.from('exports').delete().eq('id', id).then(ok));
-      state.exports = state.exports.filter(e => e.id !== id);
-      render();
-    } catch (err) { alert(T().syncFail(err.message)); }
-  });
-}
-
+itemRow(); itemRow();
+$('mDate').value = today();
 setLang(lang);
-// fires once on load with the saved session (stays logged in), then on every login/logout
 sb.auth.onAuthStateChange((ev, session) => {
   if (ev === 'INITIAL_SESSION' || ev === 'SIGNED_IN' || ev === 'SIGNED_OUT') setTimeout(() => showSession(session));
 });
