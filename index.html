@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>구매·수출 장부</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+  :root {
+    --bg:#faf7f2; --card:#fffdf9; --ink:#2b2622; --mut:#8a7f72; --line:#ebe4d8; --soft:#f3ede3;
+    --acc:#c2410c; --acc-ink:#fff; --acc-soft:#fbeee6;
+    --ok:#3f6212; --ok-soft:#ecf3df; --warn:#9a3412; --warn-soft:#fdf1e7; --warn-line:#f2d3bd;
+    --font:"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Malgun Gothic", sans-serif;
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 var(--font); letter-spacing:-0.01em; }
+  /* 줄바꿈: 한국어는 단어(어절) 단위, 중국어는 글자 단위가 정상. 아주 긴 토큰만 강제로 끊음 */
+  :lang(ko) { word-break:keep-all; }
+  :lang(zh) { word-break:normal; line-break:strict; }
+  body { overflow-wrap:break-word; }
+  button, input, select { font:inherit; color:inherit; letter-spacing:inherit; }
+
+  header { position:sticky; top:0; z-index:5; background:rgba(250,247,242,.94); backdrop-filter:blur(6px); border-bottom:1px solid var(--line); }
+  .head { max-width:1280px; margin:0 auto; padding:14px 24px; display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; }
+  .brand { font-size:19px; font-weight:700; letter-spacing:-0.02em; margin:0; white-space:nowrap; }
+  .meta { color:var(--mut); font-size:13px; flex:1 1 220px; min-width:0; }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-left:auto; }
+  .lang { margin-left:auto; display:inline-flex; border:1px solid var(--line); border-radius:999px; padding:2px; background:var(--card); }
+  .lang button { border:0; background:none; padding:4px 12px; border-radius:999px; cursor:pointer; font-size:13px; color:var(--mut); white-space:nowrap; }
+  .lang button[aria-pressed="true"] { background:var(--ink); color:#fff; }
+
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:36px; padding:6px 16px; border-radius:999px; border:1px solid var(--acc); background:var(--acc); color:var(--acc-ink); cursor:pointer; font-size:14px; font-weight:500; white-space:nowrap; transition:filter .15s; }
+  .btn:hover { filter:brightness(1.07); }
+  .btn.ghost { background:var(--card); color:var(--ink); border-color:var(--line); }
+  .btn.ghost:hover { border-color:var(--mut); filter:none; }
+  .btn.danger { background:var(--card); color:#b42318; border-color:#f1c9c4; }
+  .btn:disabled { opacity:.4; cursor:default; filter:none; }
+  .btn:focus-visible, .lang button:focus-visible, nav button:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+
+  main { max-width:1280px; margin:0 auto; padding:20px 24px 48px; }
+  nav { display:flex; flex-wrap:wrap; gap:4px; border-bottom:1px solid var(--line); margin-bottom:20px; }
+  nav button { border:0; background:none; padding:10px 16px; cursor:pointer; color:var(--mut); font-size:15px; font-weight:500; border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap; }
+  nav button.on { color:var(--ink); border-bottom-color:var(--acc); }
+
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:16px; min-width:0; }
+  .card h2 { font-size:16px; font-weight:600; margin:0 0 12px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:12px; margin-bottom:16px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; min-width:0; }
+  .stat span { display:block; color:var(--mut); font-size:13px; }
+  .stat b { display:block; margin-top:4px; font-size:clamp(20px, 2.3vw, 27px); font-weight:700; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; line-height:1.25; }
+  .stat.hl { background:var(--acc-soft); border-color:#f2d3bd; }
+  .stat.hl b { color:var(--acc); }
+
+  .bar { display:flex; flex-wrap:wrap; gap:8px 10px; align-items:center; margin-bottom:12px; }
+  .bar h2 { margin:0 8px 0 0; }
+  .bar .grow { flex:1 1 0; }
+  .field { display:inline-flex; align-items:center; gap:6px; color:var(--mut); font-size:13px; white-space:nowrap; }
+  input[type=date], input[type=search], input[type=text], input[type=number], input[type=email], input[type=password] { min-height:36px; padding:6px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; min-width:0; }
+  input[type=search], input[type=text] { width:12em; max-width:100%; }
+  input:focus { outline:2px solid var(--acc-soft); border-color:var(--acc); }
+
+  .scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--line); border-radius:12px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { padding:9px 12px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:middle; }
+  th { background:var(--soft); color:var(--mut); font-size:13px; font-weight:600; position:sticky; top:0; }
+  tr:last-child td { border-bottom:0; }
+  tbody tr:hover td { background:#fbf8f3; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  td.wrap { white-space:normal; min-width:12em; max-width:28em; }
+  tr.part td { background:#fdf6ef; }
+  input.qty { width:6.5em; text-align:right; }
+  #todoLines tbody { user-select:none; cursor:pointer; }
+  #todoLines tbody tr:has(.pick:checked) td { background:var(--acc-soft); }
+  .tag { display:inline-block; font-size:12px; padding:2px 9px; border-radius:999px; background:var(--acc-soft); color:var(--acc); white-space:nowrap; }
+  .tag.done { background:var(--ok-soft); color:var(--ok); }
+  .tag.unk { background:var(--soft); color:var(--mut); }
+  .warn { background:var(--warn-soft); border-color:var(--warn-line); color:var(--warn); }
+  .warn h2 { color:var(--warn); }
+  .warn ul { margin:0; padding-left:20px; }
+  .warn li { margin:2px 0; }
+  .empty { text-align:center; padding:48px 16px; color:var(--mut); white-space:normal; }
+  details summary { cursor:pointer; list-style:none; display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline; }
+  details summary::-webkit-details-marker { display:none; }
+  details summary::before { content:"▸"; color:var(--mut); }
+  details[open] summary::before { content:"▾"; }
+  details summary b { font-size:16px; }
+  details summary span { color:var(--mut); font-size:14px; }
+  details .scroll { margin-top:12px; }
+  [hidden] { display:none !important; }
+  body.out main > :not(#login), body.out .actions, body.out .meta, body:not(.out) #login { display:none !important; }
+  body.busy { cursor:progress; }
+  #login { max-width:380px; margin:8vh auto 0; }
+  #login form { display:grid; gap:12px; }
+  #login label { display:grid; gap:4px; font-size:13px; color:var(--mut); }
+  #login input { width:100%; }
+  #loginErr { color:#b42318; font-size:13px; min-height:1.2em; margin:0; }
+
+  @media (max-width:640px) {
+    .head, main { padding-left:16px; padding-right:16px; }
+    .brand { order:0; }
+    .lang { order:1; margin-left:auto; }
+    .meta { order:2; flex-basis:100%; }
+    .actions { order:3; margin-left:0; width:100%; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="head">
+    <h1 class="brand" data-i18n="title"></h1>
+    <span class="meta" id="meta"></span>
+    <div class="actions">
+      <label class="btn"><span data-i18n="upload"></span><input type="file" id="file" accept=".xlsx,.xls" hidden></label>
+      <button class="btn ghost" id="backup" data-i18n="backup"></button>
+      <button class="btn ghost" id="logout" data-i18n="logout"></button>
+    </div>
+    <div class="lang" role="group" aria-label="Language">
+      <button data-lang="ko">한국어</button><button data-lang="zh">中文</button>
+    </div>
+  </div>
+</header>
+<main>
+  <section id="login" class="card">
+    <h2 data-i18n="loginTitle"></h2>
+    <form id="loginForm">
+      <label><span data-i18n="email"></span><input type="email" id="email" autocomplete="username" required></label>
+      <label><span data-i18n="password"></span><input type="password" id="password" autocomplete="current-password" required></label>
+      <p id="loginErr" role="alert"></p>
+      <button class="btn" type="submit" data-i18n="loginBtn"></button>
+    </form>
+  </section>
+  <div class="card warn" id="warnBox" hidden><h2 data-i18n="check"></h2><ul id="warnList"></ul></div>
+  <nav>
+    <button data-tab="todo" class="on" data-i18n="tabTodo"></button>
+    <button data-tab="buy" data-i18n="tabBuy"></button>
+    <button data-tab="exp" data-i18n="tabExp"></button>
+  </nav>
+
+  <section id="tab-todo">
+    <div class="stats" id="todoStats"></div>
+    <div class="card">
+      <h2 data-i18n="byName"></h2>
+      <div class="scroll"><table id="todoByName"></table></div>
+    </div>
+    <div class="card">
+      <div class="bar">
+        <h2 data-i18n="detail"></h2>
+        <span class="field"><input type="date" id="tFrom"> ~ <input type="date" id="tTo"></span>
+        <input type="search" id="tQ" data-i18n-ph="search">
+      </div>
+      <div class="bar">
+        <span class="field"><span data-i18n="expDate"></span> <input type="date" id="expDate"></span>
+        <input type="text" id="expMemo" data-i18n-ph="memo">
+        <span class="grow"></span>
+        <button class="btn" id="doExport" disabled></button>
+      </div>
+      <div class="scroll"><table id="todoLines"></table></div>
+    </div>
+  </section>
+
+  <section id="tab-buy" hidden>
+    <div class="card">
+      <div class="bar">
+        <span class="field"><input type="date" id="bFrom"> ~ <input type="date" id="bTo"></span>
+        <input type="search" id="bQ" data-i18n-ph="search">
+        <span class="field" id="bSum"></span>
+      </div>
+      <div class="scroll"><table id="buyTable"></table></div>
+    </div>
+  </section>
+
+  <section id="tab-exp" hidden>
+    <div id="expList"></div>
+  </section>
+</main>
+
+<!-- core: no DOM, also run by the test script -->
+<script id="core">
+const SLOTS = [['E','F','G','H'], ['I','J','K','L'], ['M','N','O','P'], ['Q','R','S','T']];
+const num = v => typeof v === 'number' && isFinite(v) ? v : null;
+const won = n => Math.round(n).toLocaleString('ko-KR');
+const kg = n => (Math.round(n * 100) / 100).toLocaleString('ko-KR');
+// Excel serial → yyyy-mm-dd (UTC math avoids timezone drift)
+const serialToISO = s => new Date(Math.round((s - 25569) * 864e5)).toISOString().slice(0, 10);
+
+// Reads only columns A–T; B,C (hidden) ignored. Rows whose A is not a date (header, 合计) are skipped.
+// Warnings are {k, ...params} so the page can show them in either language.
+function parseSheet(ws) {
+  const rows = [], warn = [], seen = {};
+  const last = XLSX.utils.decode_range(ws['!ref']).e.r + 1;
+  const val = (c, r) => { const x = ws[c + r]; return x ? x.v : undefined; };
+  for (let r = 2; r <= last; r++) {
+    const a = ws['A' + r];
+    if (!a || a.t !== 'n') {
+      if (a && a.t === 's' && a.v.trim() && a.v.trim() !== '合计') warn.push({ k: 'notDate', r, v: a.v });
+      continue;
+    }
+    const date = serialToISO(a.v), amount = num(val('D', r));
+    const items = [], notes = [];
+    SLOTS.forEach(([cn, cq, cp, cw]) => {
+      const name = String(val(cn, r) ?? '').trim(), qty = num(val(cq, r));
+      if (qty === null) { if (name) notes.push(name); return; }   // 退款了 / 取消 같은 메모
+      const price = num(val(cp, r)), rawW = val(cw, r), weight = num(rawW);
+      if (price === null) warn.push({ k: 'badPrice', r, c: cp });
+      if (weight === null && rawW != null && String(rawW).trim()) warn.push({ k: 'badWeight', r, c: cw, v: rawW });
+      // shortcut: key = 날짜·품목·수량·단가 + 같은 조합 순번. 과거 행을 고치거나 중간에 끼워 넣으면 수출 기록이 어긋날 수 있음 → "확인 필요"에 표시됨
+      const base = [date, name, qty, price ?? ''].join('|');
+      seen[base] = (seen[base] || 0) + 1;
+      items.push({ row: r, date, name, qty, price: price || 0, weight: weight || 0, key: base + '#' + seen[base] });
+    });
+    const sum = items.reduce((s, x) => s + x.qty * x.price, 0);
+    if (items.length && amount !== null && Math.abs(sum - amount) > 1) warn.push({ k: 'mismatch', r, a: amount, b: sum });
+    rows.push({ row: r, date, amount: amount || 0, items, notes });
+  }
+  return { rows, warn };
+}
+
+function exportedByKey(exportsList) {
+  const m = {};
+  for (const e of exportsList) for (const l of e.lines) m[l.key] = (m[l.key] || 0) + l.qty;
+  return m;
+}
+
+// every item line with how much is still not exported; weight is for the whole qty, so prorate
+function withRemaining(rows, exportsList) {
+  const done = exportedByKey(exportsList);
+  return rows.flatMap(r => r.items).map(it => {
+    const sent = Math.min(done[it.key] || 0, it.qty), left = it.qty - sent;
+    return { ...it, sent, left, leftAmt: left * it.price, leftW: it.qty ? it.weight * left / it.qty : 0 };
+  });
+}
+</script>
+
+<script>
+const I18N = {
+  ko: {
+    title: '구매·수출 장부', upload: '엑셀 업로드', backup: '엑셀 내보내기 (백업)', nothing: '내보낼 기록이 없어요',
+    loginTitle: '로그인', email: '이메일', password: '비밀번호', loginBtn: '로그인', logout: '로그아웃',
+    loginFail: '이메일이나 비밀번호가 맞지 않아요', syncFail: m => `서버에 저장하지 못했어요. 변경 내용은 반영되지 않았어요.\n${m}`,
+    loadFail: m => `서버에서 데이터를 불러오지 못했어요: ${m}`,
+    noFile: '엑셀을 올려주세요', meta: (f, t, n) => `${f} · ${t} 업로드 · 결제 ${n}건`,
+    check: '확인 필요', tabTodo: '미수출', tabBuy: '구매내역', tabExp: '수출내역',
+    sQty: '미수출 수량', sAmt: '미수출 금액', sW: '미수출 중량', sOld: '가장 오래된 구매일', pcs: '개',
+    byName: '품목별 미수출', detail: '미수출 상세', search: '품목 검색', expDate: '수출일', memo: '메모 (선택)',
+    doExport: '선택 항목 수출 처리', doExportN: n => `선택 ${n}건 수출 처리`,
+    name: '품목', qty: '수량', amt: '금액', weight: '중량(kg)', price: '단가', buyDate: '구매일', row: '엑셀 행',
+    bought: '구매', sent: '수출함', left: '남음', sendQty: '보낼 수량', leftW: '남은 중량(kg)', selAll: '전체 선택', sel: '선택',
+    card: '카드 결제(세금 포함)', status: '수출', done: '완료', unknown: '품목 미상', note: '메모',
+    allDone: '모두 수출했어요', needUpload: '엑셀을 올리면 여기에 표시돼요',
+    bSum: (n, a) => `${n}건 · 결제 합계 ₩${a}`,
+    expHead: (n, q, a) => `${n}건 · ${q}개 · ₩${a}`, delExp: '이 수출 기록 삭제',
+    noExp: '아직 수출 기록이 없어요. 미수출 탭에서 항목을 골라 수출 처리하세요.',
+    w: {
+      notDate: x => `${x.r}행 A열 "${x.v}"는 날짜가 아니라서 건너뜀`,
+      badPrice: x => `${x.r}행 ${x.c}열 단가가 숫자가 아님 → 0으로 처리`,
+      badWeight: x => `${x.r}행 ${x.c}열 중량 "${x.v}"가 숫자가 아님 → 0으로 처리`,
+      mismatch: x => `${x.r}행 결제금액 ₩${won(x.a)} ≠ 상품 합계 ₩${won(x.b)}`,
+      orphan: x => `${x.d} 수출 기록의 ${x.id} ${x.n} ${x.q}개가 지금 엑셀에서 보이지 않음 (행이 수정됐을 수 있음)`,
+    },
+    readFail: m => `엑셀을 읽지 못했어요: ${m}`,
+    noRows: 'A열에 날짜가 있는 행을 찾지 못했어요. 첫 번째 시트 형식을 확인하세요.',
+    badBackup: '백업 엑셀의 복구용 데이터가 손상됐어요',
+    restoreAsk: n => `백업 엑셀이에요. 이 백업으로 복구할까요?\n지금 기록이 백업 내용(수출 기록 ${n}건)으로 바뀌어요.`,
+    qtyRange: (d, n, max) => `${d} ${n}: 보낼 수량은 1~${max} 사이 정수여야 해요`,
+    needDate: '수출일을 넣어주세요',
+    expAsk: (d, n, q) => `${d} 수출로 ${n}건, ${q}개를 기록할까요?`,
+    delAsk: '이 수출 기록을 지울까요? 해당 물건은 다시 미수출로 돌아가요.',
+    backupName: '구매수출_백업',
+  },
+  zh: {
+    title: '采购·出口台账', upload: '上传 Excel', backup: '导出 Excel（备份）', nothing: '没有可导出的记录',
+    loginTitle: '登录', email: '邮箱', password: '密码', loginBtn: '登录', logout: '退出登录',
+    loginFail: '邮箱或密码不正确', syncFail: m => `保存到服务器失败，本次修改未生效。\n${m}`,
+    loadFail: m => `无法从服务器加载数据：${m}`,
+    noFile: '请上传 Excel', meta: (f, t, n) => `${f} · ${t} 上传 · 共 ${n} 笔`,
+    check: '需要确认', tabTodo: '未出口', tabBuy: '采购记录', tabExp: '出口记录',
+    sQty: '未出口数量', sAmt: '未出口金额', sW: '未出口重量', sOld: '最早采购日期', pcs: '件',
+    byName: '按品名汇总（未出口）', detail: '未出口明细', search: '搜索品名', expDate: '出口日期', memo: '备注（可选）',
+    doExport: '将所选标记为已出口', doExportN: n => `已选 ${n} 项 · 标记为已出口`,
+    name: '品名', qty: '数量', amt: '金额', weight: '重量(kg)', price: '单价', buyDate: '采购日期', row: 'Excel 行',
+    bought: '采购', sent: '已出口', left: '剩余', sendQty: '本次出口数量', leftW: '剩余重量(kg)', selAll: '全选', sel: '选择',
+    card: '刷卡金额（含税）', status: '出口', done: '已完成', unknown: '品名不详', note: '备注',
+    allDone: '已全部出口', needUpload: '上传 Excel 后在此显示',
+    bSum: (n, a) => `${n} 笔 · 刷卡合计 ₩${a}`,
+    expHead: (n, q, a) => `${n} 项 · ${q} 件 · ₩${a}`, delExp: '删除此出口记录',
+    noExp: '暂无出口记录。请在“未出口”页选择商品并标记出口。',
+    w: {
+      notDate: x => `第 ${x.r} 行 A 列“${x.v}”不是日期，已跳过`,
+      badPrice: x => `第 ${x.r} 行 ${x.c} 列单价不是数字 → 按 0 处理`,
+      badWeight: x => `第 ${x.r} 行 ${x.c} 列重量“${x.v}”不是数字 → 按 0 处理`,
+      mismatch: x => `第 ${x.r} 行刷卡金额 ₩${won(x.a)} ≠ 商品合计 ₩${won(x.b)}`,
+      orphan: x => `${x.d} 出口记录中的 ${x.id} ${x.n} ${x.q} 件在当前 Excel 中找不到（该行可能已被修改）`,
+    },
+    readFail: m => `无法读取 Excel：${m}`,
+    noRows: 'A 列中没有找到日期行，请检查第一个工作表的格式。',
+    badBackup: '备份 Excel 中的恢复数据已损坏',
+    restoreAsk: n => `这是备份 Excel。要用它恢复吗？\n当前数据将替换为备份内容（出口记录 ${n} 条）。`,
+    qtyRange: (d, n, max) => `${d} ${n}：出口数量必须是 1~${max} 之间的整数`,
+    needDate: '请填写出口日期',
+    expAsk: (d, n, q) => `确认以 ${d} 出口记录 ${n} 项、共 ${q} 件吗？`,
+    delAsk: '要删除这条出口记录吗？相关商品会回到“未出口”。',
+    backupName: '采购出口_备份',
+  },
+};
+
+const LS_LANG = 'buyexport.lang';
+let lang = (() => { try { return localStorage.getItem(LS_LANG) || 'ko'; } catch { return 'ko'; } })();
+const T = () => I18N[lang];
+const $ = id => document.getElementById(id);
+const EMPTY = () => ({ rows: [], warn: [], exports: [] });
+let state = EMPTY();   // { fileName, uploadedAt(ISO), rows, warn, exports: [{id,date,memo,lines:[{key,qty,name,itemDate,price,row}]}] }
+
+// Supabase: data lives in the cloud, guarded by row-level security (each login sees only its own rows).
+// The anon key is meant to be public; it can do nothing without a logged-in session.
+const sb = supabase.createClient('https://hymiapuytoelwerwhejj.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5bWlhcHV5dG9lbHdlcndoZWpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0Nzg3MzQsImV4cCI6MjExMDA1NDczNH0.xSW7RRwri0PW1-xUtbaQ-TTwudkLX_RRdSWZDdHJhEU');
+const ok = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
+const busy = async fn => { document.body.classList.add('busy'); try { return await fn(); } finally { document.body.classList.remove('busy'); } };
+
+async function loadCloud() {
+  const [led, exps] = await Promise.all([
+    sb.from('ledger').select('*').maybeSingle().then(ok),
+    sb.from('exports').select('id,date,memo,lines').order('id').then(ok),
+  ]);
+  state = led ? { fileName: led.file_name, uploadedAt: led.uploaded_at, rows: led.rows, warn: led.warn, exports: exps } : { ...EMPTY(), exports: exps };
+}
+const saveLedger = s => sb.from('ledger').upsert({ file_name: s.fileName, uploaded_at: s.uploadedAt, rows: s.rows, warn: s.warn }).then(ok);
+const insertExports = list => list.length ? sb.from('exports').insert(list.map(e => ({ date: e.date, memo: e.memo || '', lines: e.lines }))).select('id,date,memo,lines').then(ok) : Promise.resolve([]);
+
+async function showSession(session) {
+  document.body.classList.toggle('out', !session);
+  if (!session) { state = EMPTY(); render(); return; }
+  try { await busy(loadCloud); } catch (err) { alert(T().loadFail(err.message)); }
+  render();
+}
+$('loginForm').onsubmit = async e => {
+  e.preventDefault();
+  $('loginErr').textContent = '';
+  const { error } = await busy(() => sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value }));
+  if (error) { $('loginErr').textContent = T().loginFail; return; }
+  $('password').value = '';
+};
+$('logout').onclick = () => sb.auth.signOut();
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+const nm = n => n || T().unknown;
+
+function setLang(l) {
+  lang = l;
+  try { localStorage.setItem(LS_LANG, l); } catch {}
+  document.documentElement.lang = l === 'zh' ? 'zh-CN' : 'ko';
+  document.title = T().title;
+  document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = T()[e.dataset.i18n]);
+  document.querySelectorAll('[data-i18n-ph]').forEach(e => e.placeholder = T()[e.dataset.i18nPh]);
+  document.querySelectorAll('.lang button').forEach(b => b.setAttribute('aria-pressed', b.dataset.lang === l));
+  render();
+}
+document.querySelectorAll('.lang button').forEach(b => b.onclick = () => setLang(b.dataset.lang));
+
+// One upload button: a backup Excel (has the hidden BACKUP_SHEET) restores everything; any other Excel is the purchase sheet.
+const BACKUP_SHEET = '_backup';
+$('file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const t = T();
+  let wb;
+  try { wb = XLSX.read(await f.arrayBuffer()); } catch (err) { e.target.value = ''; return alert(t.readFail(err.message)); }
+  try {
+    if (wb.SheetNames.includes(BACKUP_SHEET)) {
+      let s;
+      try { s = JSON.parse(XLSX.utils.sheet_to_json(wb.Sheets[BACKUP_SHEET], { header: 1, raw: true }).map(r => r[0] ?? '').join('')); } catch { s = null; }
+      if (!s || !Array.isArray(s.rows) || !Array.isArray(s.exports)) throw new Error(t.badBackup);
+      if (!confirm(t.restoreAsk(s.exports.length))) return;
+      const next = { fileName: s.fileName, uploadedAt: s.uploadedAt || new Date().toISOString(), rows: s.rows, warn: s.warn || [] };
+      // insert the backup's exports first, then drop the old ones, so a failure midway never leaves zero records
+      await busy(async () => {
+        await saveLedger(next);
+        const added = await insertExports(s.exports);
+        const old = state.exports.map(x => x.id).filter(id => !added.some(a => a.id === id));
+        if (old.length) await sb.from('exports').delete().in('id', old).then(ok);
+        state = { ...next, exports: added };
+      });
+    } else {
+      const { rows, warn } = parseSheet(wb.Sheets[wb.SheetNames[0]]);
+      if (!rows.length) return alert(t.readFail(t.noRows));
+      const next = { fileName: f.name, uploadedAt: new Date().toISOString(), rows, warn };
+      await busy(() => saveLedger(next));
+      Object.assign(state, next);
+    }
+    render();
+  } catch (err) { alert(t.syncFail(err.message)); }
+  finally { e.target.value = ''; }
+};
+
+// Backup = readable sheets (unexported, export log) + hidden sheet holding the full state as JSON chunks
+$('backup').onclick = () => {
+  const t = T();
+  if (!state.rows.length && !state.exports.length) return alert(t.nothing);
+  const todo = withRemaining(state.rows, state.exports).filter(l => l.left > 0).map(l => ({
+    [t.buyDate]: l.date, [t.row]: l.row, [t.name]: nm(l.name), [t.price]: l.price, [t.bought]: l.qty, [t.sent]: l.sent, [t.left]: l.left, [t.leftW]: Math.round(l.leftW * 100) / 100 }));
+  const log = state.exports.flatMap(e => e.lines.map(l => ({
+    [t.expDate]: e.date, [t.note]: e.memo, [t.buyDate]: l.itemDate, [t.row]: l.row ?? '', [t.name]: nm(l.name), [t.price]: l.price, [t.qty]: l.qty })));
+  const json = JSON.stringify(state), chunks = [];
+  for (let i = 0; i < json.length; i += 30000) chunks.push([json.slice(i, i + 30000)]);   // Excel cell limit is 32,767 chars
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(todo), t.tabTodo);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(log), t.tabExp);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(chunks), BACKUP_SHEET);
+  wb.Workbook = { Sheets: [{ Hidden: 0 }, { Hidden: 0 }, { Hidden: 1 }] };
+  XLSX.writeFile(wb, `${t.backupName}_${today()}.xlsx`);
+};
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  ['todo', 'buy', 'exp'].forEach(t => $('tab-' + t).hidden = t !== b.dataset.tab);
+});
+
+const inRange = (d, from, to) => (!from || d >= from) && (!to || d <= to);
+const match = (name, q) => !q || nm(name).toLowerCase().includes(q.toLowerCase());
+const fmtTime = iso => { const d = new Date(iso); return isNaN(d) ? (iso || '') : d.toLocaleString(lang === 'zh' ? 'zh-CN' : 'ko-KR', { dateStyle: 'medium', timeStyle: 'short' }); };
+const warnText = x => typeof x === 'string' ? x : T().w[x.k](x);
+
+function render() {
+  $('meta').textContent = state.fileName ? T().meta(state.fileName, fmtTime(state.uploadedAt), won(state.rows.length)) : T().noFile;
+  // orphans: export records whose purchase line is no longer in the sheet
+  const keys = new Set(state.rows.flatMap(r => r.items.map(i => i.key)));
+  const orphans = state.exports.flatMap(e => e.lines.filter(l => !keys.has(l.key)).map(l => ({ k: 'orphan', d: e.date, id: l.itemDate, n: nm(l.name), q: l.qty })));
+  const w = [...orphans, ...(state.warn || [])];
+  $('warnBox').hidden = !w.length;
+  $('warnList').innerHTML = w.map(x => `<li>${esc(warnText(x))}</li>`).join('');
+  renderTodo(); renderBuy(); renderExp();
+}
+
+function renderTodo() {
+  const t = T();
+  const lines = withRemaining(state.rows, state.exports).filter(l => l.left > 0);
+  const tot = lines.reduce((s, l) => (s.q += l.left, s.a += l.leftAmt, s.w += l.leftW, s), { q: 0, a: 0, w: 0 });
+  const oldest = lines.length ? lines.reduce((m, l) => l.date < m ? l.date : m, lines[0].date) : '—';
+  $('todoStats').innerHTML = [[t.sQty, won(tot.q) + ' ' + t.pcs, 1], [t.sAmt, '₩' + won(tot.a)], [t.sW, kg(tot.w) + ' kg'], [t.sOld, oldest]]
+    .map(([k, v, hl]) => `<div class="stat${hl ? ' hl' : ''}"><span>${k}</span><b>${v}</b></div>`).join('');
+
+  const by = {};
+  for (const l of lines) { const g = by[nm(l.name)] ||= { q: 0, a: 0, w: 0 }; g.q += l.left; g.a += l.leftAmt; g.w += l.leftW; }
+  const groups = Object.entries(by).sort((a, b) => b[1].a - a[1].a);
+  $('todoByName').innerHTML = `<thead><tr><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.amt}</th><th class="n">${t.weight}</th></tr></thead><tbody>` +
+    (groups.map(([n, g]) => `<tr><td class="wrap">${esc(n)}</td><td class="n">${won(g.q)}</td><td class="n">₩${won(g.a)}</td><td class="n">${kg(g.w)}</td></tr>`).join('') ||
+    `<tr><td colspan="4" class="empty">${state.rows.length ? t.allDone : t.needUpload}</td></tr>`) + '</tbody>';
+
+  const shown = lines.filter(l => inRange(l.date, $('tFrom').value, $('tTo').value) && match(l.name, $('tQ').value));
+  $('todoLines').innerHTML = `<thead><tr><th><input type="checkbox" id="all" aria-label="${t.selAll}"></th><th>${t.buyDate}</th><th class="n">${t.row}</th><th>${t.name}</th><th class="n">${t.price}</th><th class="n">${t.bought}</th><th class="n">${t.sent}</th><th class="n">${t.left}</th><th class="n">${t.sendQty}</th><th class="n">${t.leftW}</th></tr></thead><tbody>` +
+    (shown.map(l => `<tr class="${l.sent ? 'part' : ''}"><td><input type="checkbox" class="pick" data-key="${esc(l.key)}" aria-label="${t.sel}"></td><td>${l.date}</td><td class="n">${l.row}</td><td class="wrap">${esc(nm(l.name))}</td><td class="n">₩${won(l.price)}</td><td class="n">${won(l.qty)}</td><td class="n">${l.sent ? won(l.sent) : ''}</td><td class="n">${won(l.left)}</td>` +
+      `<td class="n"><input type="number" class="qty" min="1" max="${l.left}" value="${l.left}" data-key="${esc(l.key)}" aria-label="${t.sendQty}"></td><td class="n">${kg(l.leftW)}</td></tr>`).join('') ||
+    `<tr><td colspan="10" class="empty">${state.rows.length ? t.allDone : t.needUpload}</td></tr>`) + '</tbody>';
+  $('all').onchange = e => { document.querySelectorAll('.pick').forEach(c => c.checked = e.target.checked); pickChanged(); };
+  document.querySelectorAll('.pick').forEach(c => c.onchange = pickChanged);
+  pickChanged();
+}
+function pickChanged() {
+  const n = document.querySelectorAll('.pick:checked').length;
+  $('doExport').disabled = !n;
+  $('doExport').textContent = n ? T().doExportN(n) : T().doExport;
+}
+['tFrom', 'tTo', 'tQ'].forEach(id => $(id).oninput = renderTodo);
+$('expDate').value = today();
+
+// drag-select: press on a row, drag over others; every row in the range gets the first row's new state
+let drag = null;
+const picks = () => [...document.querySelectorAll('#todoLines .pick')];
+function paint(to) {
+  const all = picks(), a = Math.min(drag.from, to), b = Math.max(drag.from, to);
+  all.forEach((c, k) => c.checked = k >= a && k <= b ? drag.on : drag.before[k]);
+  pickChanged();
+}
+$('todoLines').addEventListener('pointerdown', e => {
+  if (e.button !== 0 || e.target.closest('input.qty')) return;
+  const box = e.target.closest('tbody tr')?.querySelector('.pick');
+  if (!box) return;
+  const all = picks();
+  drag = { from: all.indexOf(box), on: !box.checked, before: all.map(c => c.checked) };
+  paint(drag.from);
+});
+$('todoLines').addEventListener('pointerover', e => {
+  if (!drag) return;
+  const box = e.target.closest('tbody tr')?.querySelector('.pick');
+  if (box) paint(picks().indexOf(box));
+});
+addEventListener('pointerup', () => drag = null);
+// mouse click on the box itself was already handled by pointerdown; keep keyboard (detail 0) toggling native
+$('todoLines').addEventListener('click', e => { if (e.target.classList.contains('pick') && e.detail) e.preventDefault(); });
+
+$('doExport').onclick = async () => {
+  const t = T();
+  const byKey = Object.fromEntries(withRemaining(state.rows, state.exports).map(l => [l.key, l]));
+  const lines = [];
+  for (const c of document.querySelectorAll('.pick:checked')) {
+    const l = byKey[c.dataset.key];
+    const q = Number(document.querySelector(`.qty[data-key="${CSS.escape(c.dataset.key)}"]`).value);
+    if (!Number.isInteger(q) || q < 1 || q > l.left) return alert(t.qtyRange(l.date, nm(l.name), l.left));
+    lines.push({ key: l.key, qty: q, name: l.name, itemDate: l.date, price: l.price, row: l.row });
+  }
+  if (!$('expDate').value) return alert(t.needDate);
+  const q = lines.reduce((s, l) => s + l.qty, 0);
+  if (!confirm(t.expAsk($('expDate').value, lines.length, won(q)))) return;
+  try {
+    const [added] = await busy(() => insertExports([{ date: $('expDate').value, memo: $('expMemo').value.trim(), lines }]));
+    state.exports.push(added);
+    $('expMemo').value = '';
+    render();
+  } catch (err) { alert(t.syncFail(err.message)); }
+};
+
+function renderBuy() {
+  const t = T(), from = $('bFrom').value, to = $('bTo').value, q = $('bQ').value;
+  const done = exportedByKey(state.exports);
+  const rows = state.rows.filter(r => inRange(r.date, from, to) && (!q || r.items.some(i => match(i.name, q)) || r.notes.some(n => match(n, q))));
+  $('bSum').textContent = t.bSum(won(rows.length), won(rows.reduce((s, r) => s + r.amount, 0)));
+  const st = (s, n) => s >= n ? `<span class="tag done">${t.done}</span>` : s ? `<span class="tag">${won(s)} / ${won(n)}</span>` : '';
+  $('buyTable').innerHTML = `<thead><tr><th>${t.buyDate}</th><th class="n">${t.row}</th><th class="n">${t.card}</th><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.weight}</th><th>${t.status}</th></tr></thead><tbody>` +
+    (rows.slice().reverse().map(r => {
+      const its = r.items.length ? r.items : [null];
+      return its.map((i, k) => `<tr>${k ? '<td></td><td></td><td></td>' : `<td>${r.date}</td><td class="n">${r.row}</td><td class="n">₩${won(r.amount)}</td>`}` +
+        (i ? `<td class="wrap">${esc(nm(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">${kg(i.weight)}</td><td>${st(done[i.key] || 0, i.qty)}</td>`
+           : `<td class="wrap"><span class="tag ${r.notes.length ? '' : 'unk'}">${r.notes.length ? t.note : t.unknown}</span> ${esc(r.notes.join(', '))}</td><td></td><td></td><td></td><td></td>`) + `</tr>`).join('');
+    }).join('') || `<tr><td colspan="8" class="empty">${t.needUpload}</td></tr>`) + '</tbody>';
+}
+['bFrom', 'bTo', 'bQ'].forEach(id => $(id).oninput = renderBuy);
+
+function renderExp() {
+  const t = T();
+  const list = state.exports.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  $('expList').innerHTML = list.map(e => {
+    const q = e.lines.reduce((s, l) => s + l.qty, 0), a = e.lines.reduce((s, l) => s + l.qty * l.price, 0);
+    return `<div class="card"><details><summary><b>${e.date}</b><span>${t.expHead(e.lines.length, won(q), won(a))}</span>${e.memo ? `<span>· ${esc(e.memo)}</span>` : ''}</summary>
+      <div class="scroll"><table><thead><tr><th>${t.buyDate}</th><th class="n">${t.row}</th><th>${t.name}</th><th class="n">${t.price}</th><th class="n">${t.qty}</th></tr></thead><tbody>
+      ${e.lines.map(l => `<tr><td>${l.itemDate}</td><td class="n">${l.row ?? ''}</td><td class="wrap">${esc(nm(l.name))}</td><td class="n">₩${won(l.price)}</td><td class="n">${won(l.qty)}</td></tr>`).join('')}</tbody></table></div>
+      <p style="margin:14px 0 0"><button class="btn danger" data-del="${e.id}">${t.delExp}</button></p></details></div>`;
+  }).join('') || `<div class="card empty">${t.noExp}</div>`;
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    if (!confirm(T().delAsk)) return;
+    const id = Number(b.dataset.del);
+    try {
+      await busy(() => sb.from('exports').delete().eq('id', id).then(ok));
+      state.exports = state.exports.filter(e => e.id !== id);
+      render();
+    } catch (err) { alert(T().syncFail(err.message)); }
+  });
+}
+
+setLang(lang);
+// fires once on load with the saved session (stays logged in), then on every login/logout
+sb.auth.onAuthStateChange((ev, session) => {
+  if (ev === 'INITIAL_SESSION' || ev === 'SIGNED_IN' || ev === 'SIGNED_OUT') setTimeout(() => showSession(session));
+});
+</script>
+</body>
+</html>
