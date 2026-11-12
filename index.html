@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>구매·수출·재고 관리</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>
@@ -115,14 +116,34 @@
   .grid2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; }
   [hidden] { display:none !important; }
 
-  body.out main > :not(#login), body.out .actions, body.out .meta, body:not(.out) #login { display:none !important; }
+  body.out main > :not(#login), body.out .actions, body.out .meta, body.out .brand, body:not(.out) #login { display:none !important; }
   body.busy, body.busy * { cursor:progress !important; }
-  #login { max-width:380px; margin:8vh auto 0; }
+  .brand { display:flex; align-items:center; gap:10px; }
+  .wm { font-family:"Cormorant Garamond", "Times New Roman", Georgia, serif; font-weight:500; letter-spacing:-.01em; line-height:1; color:var(--ink); }
+  .brand .wm { font-size:30px; }
+  .star { fill:#a8927a; flex:none; }
+  .brand .sub { font-size:15px; font-weight:500; color:var(--mut); padding-left:10px; border-left:1px solid var(--line); }
+  #login { position:relative; overflow:hidden; max-width:900px; margin:6vh auto 0; padding:64px 56px; min-height:440px; border-radius:6px; background:#f3ece2;
+    display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 340px); gap:32px; align-items:center; }
+  #login::before { content:""; position:absolute; inset:14px; border:1px solid #d9714a; border-radius:3px; pointer-events:none; z-index:1; }
+  #login .arcs { position:absolute; right:0; top:0; height:100%; width:auto; pointer-events:none; }
+  #login > :not(.arcs) { position:relative; z-index:2; }
+  #login .wm { font-size:clamp(56px, 9vw, 92px); }
+  #login .wm .star { width:.5em; height:.5em; margin-left:.12em; vertical-align:.95em; }
+  #login .tagline { margin:20px 0 0; color:#9a8b78; letter-spacing:.28em; font-size:15px; }
+  #login .rule { display:block; width:56px; height:1px; background:#a8927a; margin:22px 0; }
+  #login .biz { margin:0; font-size:15px; font-weight:500; }
+  #login form.card { margin:0; padding:24px; }
+  #login form h2 { margin:0; }
   #login form { display:grid; gap:12px; }
   #login label { display:grid; gap:4px; font-size:13px; color:var(--mut); }
   #login input { width:100%; }
 
   @media (max-width:640px) {
+    .brand .sub { display:none; }
+    #login { grid-template-columns:minmax(0, 1fr); padding:44px 28px; margin-top:16px; }
+    #login .tagline { letter-spacing:.15em; }
+    #login .arcs { top:auto; bottom:0; height:55%; }
     .head, main { padding-left:16px; padding-right:16px; }
     .lang { order:1; } .brand { order:0; }
     .meta { order:2; flex-basis:100%; } .actions { order:3; width:100%; }
@@ -132,7 +153,7 @@
 <body class="out">
 <header>
   <div class="head">
-    <h1 class="brand" data-i18n="title"></h1>
+    <h1 class="brand"><span class="wm">Lument</span><svg class="star" width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 0C10.6 7 13 9.4 20 10C13 10.6 10.6 13 10 20C9.4 13 7 10.6 0 10C7 9.4 9.4 7 10 0Z"/></svg><span class="sub" data-i18n="title"></span></h1>
     <span class="meta" id="meta"></span>
     <div class="actions">
       <button class="btn ghost" id="backup" data-i18n="backup"></button>
@@ -144,9 +165,19 @@
 </header>
 
 <main>
-  <section id="login" class="card">
-    <h2 data-i18n="loginTitle"></h2>
-    <form id="loginForm">
+  <section id="login">
+    <svg class="arcs" viewBox="0 0 420 440" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
+      <circle cx="470" cy="330" r="300" fill="#ede3d5" stroke="#c9ad86" stroke-width="1.4"/>
+      <circle cx="520" cy="400" r="290" fill="none" stroke="#d8c09a" stroke-width="1"/>
+    </svg>
+    <div>
+      <div class="wm">Lument<svg class="star" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 0C10.6 7 13 9.4 20 10C13 10.6 10.6 13 10 20C9.4 13 7 10.6 0 10C7 9.4 9.4 7 10 0Z"/></svg></div>
+      <p class="tagline" data-i18n="tagline"></p>
+      <span class="rule"></span>
+      <p class="biz" data-i18n="biz"></p>
+    </div>
+    <form id="loginForm" class="card">
+      <h2 data-i18n="loginTitle"></h2>
       <label><span data-i18n="email"></span><input type="email" id="email" autocomplete="username" required></label>
       <label><span data-i18n="password"></span><input type="password" id="password" autocomplete="current-password" required></label>
       <p class="err" id="loginErr" role="alert"></p>
@@ -306,6 +337,7 @@ function parseSheet(ws) {
 const I18N = {
   ko: {
     title: '구매·수출·재고 관리', backup: '전체 백업', restore: '백업 복원', logout: '로그아웃',
+    tagline: '더 넓은 가능성을 연결합니다.', biz: '글로벌 유통 · 수출입 · 전자상거래',
     loginTitle: '로그인', email: '이메일', password: '비밀번호', loginBtn: '로그인', loginFail: '이메일이나 비밀번호가 맞지 않아요',
     meta: (p, i) => `결제건 ${p} · 상품 ${i}`,
     tabPay: '구매 결제건', tabStock: '재고', tabDone: '수출 완료', tabRef: '반품·환불', tabInput: '입력',
@@ -364,6 +396,7 @@ const I18N = {
   },
   zh: {
     title: '采购·出口·库存管理', backup: '完整备份', restore: '恢复备份', logout: '退出登录',
+    tagline: '连接更广阔的可能。', biz: '全球流通 · 进出口 · 电子商务',
     loginTitle: '登录', email: '邮箱', password: '密码', loginBtn: '登录', loginFail: '邮箱或密码不正确',
     meta: (p, i) => `付款 ${p} 笔 · 商品 ${i} 条`,
     tabPay: '采购付款', tabStock: '库存', tabDone: '已出口', tabRef: '退货·退款', tabInput: '录入',
