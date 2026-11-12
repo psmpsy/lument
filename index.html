@@ -337,7 +337,7 @@ const I18N = {
     chooseFile: '파일 선택', preview: (p, r, sp, sr) => `새 결제건 <b>${p}</b>건, 새 환불 <b>${r}</b>건을 가져와요. (이미 있는 결제건 ${sp}건 · 환불 ${sr}건은 건너뜀)`,
     importGo: '가져오기', imported: (p, r) => `결제건 ${p}건, 환불 ${r}건을 추가했어요`, nothingNew: '새로 추가할 내용이 없어요',
     manual: '직접 입력', manualHelp: '금액을 음수로 넣으면 환불 거래로 저장되고 바로 연결 화면이 열려요(상품 입력은 무시).',
-    addItem: '+ 상품 줄 추가', save: '저장', del: '삭제', saved: '저장했어요',
+    addItem: '+ 상품 줄 추가', fillTitle: '상품 채워 넣기', fillHelp: '이 결제건에서 산 상품을 넣으면 재고로 들어가요.', fillSave: '상품 저장', fillNeed: '상품을 한 줄 이상 넣어주세요', save: '저장', del: '삭제', saved: '저장했어요',
     mErrDate: '구매일을 넣어주세요', mErrAmt: '카드 결제 총액을 숫자로 넣어주세요', mErrItem: n => `${n}번째 상품 줄: 상품명과 0보다 큰 수량이 필요해요`,
     w: {
       notDate: x => `${x.r}행 A열 "${x.v}"는 날짜가 아니라서 건너뜀`,
@@ -395,7 +395,7 @@ const I18N = {
     chooseFile: '选择文件', preview: (p, r, sp, sr) => `将导入新付款 <b>${p}</b> 笔、新退款 <b>${r}</b> 笔。（已存在的付款 ${sp} 笔、退款 ${sr} 笔将跳过）`,
     importGo: '导入', imported: (p, r) => `已添加付款 ${p} 笔、退款 ${r} 笔`, nothingNew: '没有需要新增的内容',
     manual: '手动录入', manualHelp: '金额填负数时将保存为退款交易，并直接打开关联界面（忽略商品行）。',
-    addItem: '+ 添加商品行', save: '保存', del: '删除', saved: '已保存',
+    addItem: '+ 添加商品行', fillTitle: '补录商品', fillHelp: '填写这笔付款购买的商品后，将计入库存。', fillSave: '保存商品', fillNeed: '请至少填写一行商品', save: '保存', del: '删除', saved: '已保存',
     mErrDate: '请填写采购日期', mErrAmt: '请用数字填写刷卡总额', mErrItem: n => `第 ${n} 行商品：需要品名和大于 0 的数量`,
     w: {
       notDate: x => `第 ${x.r} 行 A 列“${x.v}”不是日期，已跳过`,
@@ -553,7 +553,10 @@ function itemRowsTable(p) {
   const acts = p.canceled_on ? `<button class="btn ghost sm" data-uncancel="${p.id}">${t.uncancel}</button>`
     : !p.returned_on && !its.some(i => i.exported_on) ? `<button class="btn danger sm" data-cancel="${p.id}">${t.cancelPay}</button>` : '';
   const actRow = acts ? `<div class="subacts">${acts}</div>` : '';
-  if (!its.length) return `<p class="muted" style="margin:8px 0 0">${t.noItems}${p.note ? ' · ' + esc(p.note) : ''}</p>` + actRow;
+  const fill = p.canceled_on || p.returned_on ? '' : `<h3 style="margin:12px 0 4px">${t.fillTitle}</h3><p class="muted" style="margin:0">${t.fillHelp}</p>
+    <table class="itemsform"><thead><tr><th>${t.name}</th><th>${t.qty}</th><th>${t.price}</th><th>${t.weightCol}</th><th></th></tr></thead><tbody data-fill="${p.id}"></tbody></table>
+    <div class="subacts"><button type="button" class="btn ghost sm" data-filladd="${p.id}">${t.addItem}</button><button type="button" class="btn sm" data-fillsave="${p.id}">${t.fillSave}</button></div><p class="err" data-fillerr="${p.id}" role="alert"></p>`;
+  if (!its.length) return `<p class="muted" style="margin:8px 0 0">${t.noItems}${p.note ? ' · ' + esc(p.note) : ''}</p>` + fill + actRow;
   return `<table><thead><tr><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th><th>${t.status}</th><th>${t.exportDate}</th><th>${t.exportRef}</th></tr></thead><tbody>` +
     its.map(i => { const s = status(i); return `<tr><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td><td><span class="tag ${{ stock: 'stock', exported: 'exp', returned: 'ret', canceled: '' }[s]}">${t.st[s]}</span></td><td>${i.exported_on || ''}</td><td class="wrap">${esc(i.export_ref)}</td></tr>`; }).join('') + '</tbody></table>' + actRow;
 }
@@ -574,6 +577,15 @@ function renderPay(refreshBar = true) {
     const note = prompt(t.cancelPrompt); if (note === null) return;
     if (!note.trim()) return alert(t.cancelNeedNote);
     payAction(() => sb.rpc('cancel_payment', { pay_id: +b.dataset.cancel, note: note.trim() }).then(ok));
+  });
+  $('payTable').querySelectorAll('tbody[data-fill]').forEach(tb => itemRow(tb));
+  $('payTable').querySelectorAll('[data-filladd]').forEach(b => b.onclick = () => itemRow($('payTable').querySelector(`tbody[data-fill="${b.dataset.filladd}"]`)));
+  $('payTable').querySelectorAll('[data-fillsave]').forEach(b => b.onclick = async () => {
+    const id = +b.dataset.fillsave, errEl = $('payTable').querySelector(`[data-fillerr="${id}"]`), r = readItems($('payTable').querySelector(`tbody[data-fill="${id}"]`));
+    if (r.bad) return errEl.textContent = t.mErrItem(r.bad);
+    if (!r.items.length) return errEl.textContent = t.fillNeed;
+    try { await busy(() => sb.from('items').insert(r.items.map(i => ({ ...i, payment_id: id }))).then(ok)); await reload(); alert(t.saved); }
+    catch (err) { errEl.textContent = t.syncFail(err.message); }
   });
   $('payTable').querySelectorAll('[data-uncancel]').forEach(b => b.onclick = () => { if (confirm(t.uncancelAsk)) payAction(() => sb.rpc('uncancel_payment', { pay_id: +b.dataset.uncancel }).then(ok)); });
 }
@@ -769,13 +781,24 @@ function renderPreview() {
   };
 }
 
-function itemRow() {
+function itemRow(tbody = $('mItems')) {
   const t = T(), tr = document.createElement('tr');
   tr.innerHTML = `<td><input type="text" list="nameList" aria-label="${t.name}"></td><td><input type="number" min="0" step="any" aria-label="${t.qty}"></td><td><input type="number" min="0" step="any" aria-label="${t.price}"></td><td><input type="number" min="0" step="any" aria-label="${t.weightCol}"></td><td><button type="button" class="btn ghost sm">${t.del}</button></td>`;
   tr.querySelector('button').onclick = () => tr.remove();
-  $('mItems').append(tr);
+  tbody.append(tr);
 }
-$('mAdd').onclick = itemRow;
+// returns { items } or { bad: 1-based row number }; fully blank rows are skipped
+function readItems(tbody) {
+  const items = [], trs = [...tbody.children];
+  for (let k = 0; k < trs.length; k++) {
+    const [n, q, p, w] = [...trs[k].querySelectorAll('input')].map(i => i.value.trim());
+    if (!n && !q && !p && !w) continue;
+    if (!n || !(Number(q) > 0)) return { bad: k + 1 };
+    items.push({ name: n, qty: Number(q), price: Number(p) || 0, weight: Number(w) || 0 });
+  }
+  return { items };
+}
+$('mAdd').onclick = () => itemRow();
 $('manForm').onsubmit = async e => {
   e.preventDefault();
   const t = T(), err = m => $('mErr').textContent = m;
@@ -783,14 +806,8 @@ $('manForm').onsubmit = async e => {
   const date = $('mDate').value, amt = Number($('mAmt').value);
   if (!date) return err(t.mErrDate);
   if ($('mAmt').value === '' || !isFinite(amt)) return err(t.mErrAmt);
-  const items = [];
-  const trs = [...$('mItems').children];
-  for (let k = 0; k < trs.length; k++) {
-    const [n, q, p, w] = [...trs[k].querySelectorAll('input')].map(i => i.value.trim());
-    if (!n && !q && !p && !w) continue;
-    if (!n || !(Number(q) > 0)) return err(t.mErrItem(k + 1));
-    items.push({ name: n, qty: Number(q), price: Number(p) || 0, weight: Number(w) || 0 });
-  }
+  const { items, bad } = readItems($('mItems'));
+  if (bad) return err(t.mErrItem(bad));
   const note = $('mNote').value.trim();
   const body = amt < 0 ? { refunds: [{ tx_date: date, amount: amt, note }] } : { payments: [{ pay_date: date, amount: amt, note, items }] };
   try {
