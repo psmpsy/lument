@@ -92,7 +92,8 @@
   td.wrap { white-space:normal; min-width:10em; max-width:26em; }
   tbody tr:hover td { background:#fbf8f3; }
   .seltable tbody { user-select:none; cursor:pointer; }
-  .seltable tbody tr.sel td { background:var(--acc-soft); }
+  .seltable tbody tr.sel td, #payTable tr.sel > td { background:var(--acc-soft); }
+  #payTable tbody tr[data-id] { user-select:none; cursor:pointer; }   /* not the whole tbody: the expanded fill form must stay editable */
   tr.ret td { background:var(--red-soft) !important; }
   tr.ret td:first-child { box-shadow:inset 3px 0 0 var(--red); }
   tr.cxl td { color:var(--mut); }
@@ -703,7 +704,7 @@ function renderPay(refreshBar = true) {
   const list = payList();
   $('paySum').innerHTML = t.paySum(won(list.length), won(sumBy(list, p => p.canceled_on ? 0 : p.amount))) + ` · <span class="muted">${t.expandHint}</span>`;
   $('payTable').innerHTML = `<thead><tr><th><input type="checkbox" id="payAll" aria-label="${t.selectAll}" ${list.length && list.every(p => sel.pay.has(p.id)) ? 'checked' : ''}></th><th>${t.payDate}</th><th class="n">${t.cardAmt}</th><th class="n">${t.items}</th><th>${t.status}</th><th>${t.note}</th></tr></thead><tbody>` +
-    (list.map(p => `<tr class="${p.canceled_on ? 'cxl' : p.returned_on ? 'ret' : ''}"><td><input type="checkbox" data-psel="${p.id}" ${sel.pay.has(p.id) ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td>` +
+    (list.map(p => `<tr data-id="${p.id}" class="${p.canceled_on ? 'cxl' : p.returned_on ? 'ret' : ''}${sel.pay.has(p.id) ? ' sel' : ''}"><td><input type="checkbox" data-psel="${p.id}" ${sel.pay.has(p.id) ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td>` +
       `<td class="n"><button class="linkbtn" data-open="${p.id}" aria-expanded="${open.has(p.id)}">₩${won(p.amount)}</button></td>` +
       `<td class="n">${(itemsByPay.get(p.id) || []).length}</td><td>${payStatusCell(p)}</td><td class="wrap">${esc(p.note)}</td></tr>` +
       (open.has(p.id) ? `<tr class="sub"><td colspan="6">${itemRowsTable(p)}</td></tr>` : '')).join('') ||
@@ -733,7 +734,8 @@ function renderPay(refreshBar = true) {
   });
   $('payTable').querySelectorAll('[data-uncancel]').forEach(b => b.onclick = () => { if (confirm(t.uncancelAsk)) payAction(() => sb.rpc('uncancel_payment', { pay_id: +b.dataset.uncancel }).then(ok)); });
 }
-$('payDel').onclick = () => sel.pay.size ? deletePays([...sel.pay]) : alert(T().needPaySel);
+bindSelect($('payTable'), 'pay', () => $('payDel').textContent = T().delSel + (sel.pay.size ? ` (${won(sel.pay.size)})` : ''));
+$('payDel').onclick =() => sel.pay.size ? deletePays([...sel.pay]) : alert(T().needPaySel);
 $('payXlsx').onclick = () => {
   const t = T();
   const rows = payList().slice().reverse().flatMap(p => { const its = itemsByPay.get(p.id) || [], r = refByPay.get(p.id);
