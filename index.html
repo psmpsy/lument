@@ -249,7 +249,8 @@
         <button class="btn" id="exportGo" data-i18n="confirmExport"></button>
         <button class="btn ghost" id="exportCancel" data-i18n="cancel"></button>
       </div>
-      <div class="scroll"><table id="stockTable" class="seltable"></table></div>
+      <div class="scroll" id="stockBillsWrap"><table id="stockBills"></table></div>
+      <div class="scroll" id="stockTableWrap"><table id="stockTable" class="seltable"></table></div>
     </div>
   </section>
 
@@ -400,6 +401,7 @@ const I18N = {
     status: '상태', exportDate: '수출일', row: '엑셀 행', items: '상품', search: '상품명 검색', from: '부터', to: '까지',
     sort: '정렬', oldFirst: '오래된 구매일 먼저', newFirst: '최근 구매일 먼저', all: '전체', none: '없음', selectAll: '전체 선택', clear: '선택 해제',
     batch: '수출 배치', needExpDate: '먼저 수출일이나 수출 배치를 골라주세요', customsXlsx: '통관 신고 Excel 다운로드', shCustoms: '통관신고',
+    view: '보기', vBill: '결제건별 (결제건 전체 수출)', vItem: '상품별 (원하는 상품만 수출)', stockItems: '남은 재고 상품',
     stockSum: '전체 재고 요약', shSum: '재고요약', billXlsx: '이 결제건 Excel', shBill: '결제건명세',
     st: { stock: '재고', exported: '수출 완료', returned: '반품', canceled: '취소됨' },
     payStatus: '결제건 상태', psAll: '전체', psStock: '재고 있음', psDone: '모두 수출', psRet: '반품', psNone: '상품 정보 없음',
@@ -467,6 +469,7 @@ const I18N = {
     status: '状态', exportDate: '出口日期', row: 'Excel 行', items: '商品', search: '搜索品名', from: '起', to: '止',
     sort: '排序', oldFirst: '采购日期从早到晚', newFirst: '采购日期从晚到早', all: '全部', none: '无', selectAll: '全选', clear: '取消选择',
     batch: '出口批次', needExpDate: '请先选择出口日期或出口批次', customsXlsx: '下载海关申报 Excel', shCustoms: '海关申报',
+    view: '查看方式', vBill: '按账单（整单出口）', vItem: '按商品（选择出口）', stockItems: '剩余库存商品',
     stockSum: '全部库存汇总', shSum: '库存汇总', billXlsx: '导出此账单 Excel', shBill: '账单明细',
     st: { stock: '库存', exported: '已出口', returned: '退货', canceled: '已取消' },
     payStatus: '付款状态', psAll: '全部', psStock: '有库存', psDone: '全部已出口', psRet: '退货', psNone: '无商品信息',
@@ -575,7 +578,7 @@ const reload = async () => { await busy(loadAll); renderAll(); };
 /* ---------- filters ---------- */
 const flt = {
   pay: { from: '', to: '', q: '', ps: 'all' },
-  stock: { from: '', to: '', q: '', sort: 'asc' },
+  stock: { view: 'bill', from: '', to: '', q: '', sort: 'asc' },
   done: { from: '', to: '', ef: '', et: '', q: '', ref: '', batch: '', sort: 'desc' },
   ref: { from: '', to: '', rs: 'all' },
 };
@@ -598,6 +601,7 @@ function filterBar(el, key, parts) {
     if (p === 'batch') return `<label class="f"><span>${t.batch}</span><select data-k="batch"><option value="">${t.all}</option>${batches().map(b => { const [d, r] = b.split('|'), n = I.filter(i => status(i) === 'exported' && batchKey(i) === b).length;
         return `<option value="${esc(b)}" ${f.batch === b ? 'selected' : ''}>${d} · ${esc(r || '—')} (${won(n)})</option>`; }).join('')}</select></label>`;
     if (p === 'sort') return `<label class="f"><span>${t.sort}</span><select data-k="sort"><option value="asc" ${f.sort === 'asc' ? 'selected' : ''}>${t.oldFirst}</option><option value="desc" ${f.sort === 'desc' ? 'selected' : ''}>${t.newFirst}</option></select></label>`;
+    if (p === 'view') return `<label class="f"><span>${t.view}</span><select data-k="view">${[['bill', t.vBill], ['item', t.vItem]].map(([v, l]) => `<option value="${v}" ${f.view === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
     if (p === 'ps') return `<label class="f"><span>${t.payStatus}</span><select data-k="ps">${[['all', t.psAll], ['stock', t.psStock], ['done', t.psDone], ['ret', t.psRet], ['cxl', t.psCxl], ['none', t.psNone]].map(([v, l]) => `<option value="${v}" ${f.ps === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
     if (p === 'rs') return `<label class="f"><span>${t.refStatus}</span><select data-k="rs">${[['all', t.rfAll], ['pend', t.rfPend], ['done', t.rfDone]].map(([v, l]) => `<option value="${v}" ${f.rs === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
   }).join('');
@@ -659,8 +663,12 @@ function itemRowsTable(p) {
     <table class="itemsform"><thead><tr><th>${t.name}</th><th>${t.qty}</th><th>${t.price}</th><th>${t.weightCol}</th><th></th></tr></thead><tbody data-fill="${p.id}"></tbody></table>
     <div class="subacts"><button type="button" class="btn ghost sm" data-filladd="${p.id}">${t.addItem}</button><button type="button" class="btn sm" data-fillsave="${p.id}">${t.fillSave}</button></div><p class="err" data-fillerr="${p.id}" role="alert"></p>`;
   if (!its.length) return `<p class="muted" style="margin:8px 0 0">${t.noItems}${p.note ? ' · ' + esc(p.note) : ''}</p>` + fill + actRow;
+  return billItems(its) + actRow;
+}
+function billItems(its) {
+  const t = T();
   return `<table><thead><tr><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th><th>${t.status}</th><th>${t.exportDate}</th><th>${t.exportRef}</th></tr></thead><tbody>` +
-    its.map(i => { const s = status(i); return `<tr><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td><td><span class="tag ${{ stock: 'stock', exported: 'exp', returned: 'ret', canceled: '' }[s]}">${t.st[s]}</span></td><td>${i.exported_on || ''}</td><td class="wrap">${esc(i.export_ref)}</td></tr>`; }).join('') + '</tbody></table>' + actRow;
+    its.map(i => { const s = status(i); return `<tr><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td><td><span class="tag ${{ stock: 'stock', exported: 'exp', returned: 'ret', canceled: '' }[s]}">${t.st[s]}</span></td><td>${i.exported_on || ''}</td><td class="wrap">${esc(i.export_ref)}</td></tr>`; }).join('') + '</tbody></table>';
 }
 // delete with a second, explicit confirm when the server reports exported/returned/refund-linked rows (PROTECTED:n)
 async function deleteFlow(ask, call) {
@@ -684,12 +692,12 @@ function renderPay(refreshBar = true) {
   if (refreshBar) filterBar($('fPay'), 'pay', ['date', 'q', 'ps']);
   const list = payList();
   $('paySum').innerHTML = t.paySum(won(list.length), won(sumBy(list, p => p.canceled_on ? 0 : p.amount))) + ` · <span class="muted">${t.expandHint}</span>`;
-  $('payTable').innerHTML = `<thead><tr><th><input type="checkbox" id="payAll" aria-label="${t.selectAll}" ${list.length && list.every(p => sel.pay.has(p.id)) ? 'checked' : ''}></th><th>${t.payDate}</th><th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th class="n">${t.items}</th><th>${t.status}</th><th>${t.note}</th></tr></thead><tbody>` +
-    (list.map(p => `<tr class="${p.canceled_on ? 'cxl' : p.returned_on ? 'ret' : ''}"><td><input type="checkbox" data-psel="${p.id}" ${sel.pay.has(p.id) ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td><td class="n">${p.src_row ?? ''}</td>` +
+  $('payTable').innerHTML = `<thead><tr><th><input type="checkbox" id="payAll" aria-label="${t.selectAll}" ${list.length && list.every(p => sel.pay.has(p.id)) ? 'checked' : ''}></th><th>${t.payDate}</th><th class="n">${t.cardAmt}</th><th class="n">${t.items}</th><th>${t.status}</th><th>${t.note}</th></tr></thead><tbody>` +
+    (list.map(p => `<tr class="${p.canceled_on ? 'cxl' : p.returned_on ? 'ret' : ''}"><td><input type="checkbox" data-psel="${p.id}" ${sel.pay.has(p.id) ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td>` +
       `<td class="n"><button class="linkbtn" data-open="${p.id}" aria-expanded="${open.has(p.id)}">₩${won(p.amount)}</button></td>` +
       `<td class="n">${(itemsByPay.get(p.id) || []).length}</td><td>${payStatusCell(p)}</td><td class="wrap">${esc(p.note)}</td></tr>` +
-      (open.has(p.id) ? `<tr class="sub"><td colspan="7">${itemRowsTable(p)}</td></tr>` : '')).join('') ||
-    `<tr><td colspan="7" class="empty">${t.none}</td></tr>`) + '</tbody>';
+      (open.has(p.id) ? `<tr class="sub"><td colspan="6">${itemRowsTable(p)}</td></tr>` : '')).join('') ||
+    `<tr><td colspan="6" class="empty">${t.none}</td></tr>`) + '</tbody>';
   $('payDel').textContent = t.delSel + (sel.pay.size ? ` (${won(sel.pay.size)})` : '');
   $('payAll').onchange = e => { list.forEach(p => e.target.checked ? sel.pay.add(p.id) : sel.pay.delete(p.id)); renderPay(false); };
   $('payTable').querySelectorAll('[data-psel]').forEach(c => c.onchange = () => { c.checked ? sel.pay.add(+c.dataset.psel) : sel.pay.delete(+c.dataset.psel); renderPay(false); });
@@ -717,7 +725,7 @@ $('payDel').onclick = () => sel.pay.size ? deletePays([...sel.pay]) : alert(T().
 $('payXlsx').onclick = () => {
   const t = T();
   const rows = payList().slice().reverse().flatMap(p => { const its = itemsByPay.get(p.id) || [], r = refByPay.get(p.id);
-    const base = { [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.note]: p.note, [t.returnDate]: p.returned_on || '', [t.refAmt]: r ? r.amount : '', [t.psCxl]: p.canceled_on ? `${p.canceled_on} ${p.cancel_note}` : '' };
+    const base = { [t.payDate]: p.pay_date, [t.cardAmt]: p.amount, [t.note]: p.note, [t.returnDate]: p.returned_on || '', [t.refAmt]: r ? r.amount : '', [t.psCxl]: p.canceled_on ? `${p.canceled_on} ${p.cancel_note}` : '' };
     return its.length ? its.map(i => ({ ...base, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight, [t.status]: t.st[status(i)], [t.exportDate]: i.exported_on || '', [t.exportRef]: i.export_ref || '' })) : [base]; });
   xlsxOut(rows, t.shPay);
 };
@@ -732,10 +740,11 @@ const itemList = (key) => {
 const selTotals = (ids) => { const its = I.filter(i => ids.has(i.id)); return { n: its.length, q: sumBy(its, i => i.qty), a: sumBy(its, i => i.qty * i.price), w: sumBy(its, i => i.weight) }; };
 function itemTable(table, key, list) {
   const t = T(), done = key === 'done';
-  table.innerHTML = `<thead><tr><th><input type="checkbox" aria-label="${t.selectAll}" ${list.length && list.every(i => sel[key].has(i.id)) ? 'checked' : ''}></th>${done ? `<th>${t.exportDate}</th><th>${t.exportRef}</th>` : ''}<th>${t.payDate}</th>${done ? '' : `<th class="n">${t.ageCol}</th>`}<th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th></tr></thead><tbody>` +
+  // stock = by-item view: name/qty/price/weight only; done keeps its export + bill columns
+  table.innerHTML = `<thead><tr><th><input type="checkbox" aria-label="${t.selectAll}" ${list.length && list.every(i => sel[key].has(i.id)) ? 'checked' : ''}></th>${done ? `<th>${t.exportDate}</th><th>${t.exportRef}</th><th>${t.payDate}</th><th class="n">${t.cardAmt}</th>` : ''}<th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th>${done ? `<th class="n">${t.amt}</th>` : ''}<th class="n">${t.weightCol}</th></tr></thead><tbody>` +
     (list.map(i => { const p = payById.get(i.payment_id), on = sel[key].has(i.id), age = daysSince(p.pay_date), ac = done ? '' : age >= 60 ? 'age2' : age >= 30 ? 'age1' : '';
-      return `<tr data-id="${i.id}" class="${on ? 'sel' : ''} ${ac}"><td><input type="checkbox" ${on ? 'checked' : ''} aria-label="${t.pick}"></td>${done ? `<td>${i.exported_on}</td><td class="wrap">${esc(i.export_ref)}</td>` : ''}<td>${p.pay_date}</td>${done ? '' : `<td class="n ${ac}">${t.days(won(age))}</td>`}<td class="n">${p.src_row ?? ''}</td><td class="n">₩${won(p.amount)}</td><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td></tr>`; }).join('') ||
-    `<tr><td colspan="11" class="empty">${t.none}</td></tr>`) + '</tbody>';
+      return `<tr data-id="${i.id}" class="${on ? 'sel' : ''} ${ac}"><td><input type="checkbox" ${on ? 'checked' : ''} aria-label="${t.pick}"></td>${done ? `<td>${i.exported_on}</td><td class="wrap">${esc(i.export_ref)}</td><td>${p.pay_date}</td><td class="n">₩${won(p.amount)}</td>` : ''}<td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td>${done ? `<td class="n">₩${won(i.qty * i.price)}</td>` : ''}<td class="n">${kg(i.weight)}</td></tr>`; }).join('') ||
+    `<tr><td colspan="10" class="empty">${t.none}</td></tr>`) + '</tbody>';
 }
 // same name + same unit price → one line; different price stays separate
 const stockSummary = its => { const by = new Map();
@@ -743,6 +752,7 @@ const stockSummary = its => { const by = new Map();
   return [...by.values()].sort((a, b) => a.name.localeCompare(b.name) || a.price - b.price); };
 const fourCols = rows => { const t = T(); return rows.map(r => ({ [t.name]: r.name, [t.qty]: r.qty, [t.price]: r.price, [t.weightCol]: r.weight })); };
 let stockCard = null;   // which stat card's detail is open
+const openStock = new Set();   // expanded bills in the stock tab's by-bill view
 const dateMinus = n => new Date(Date.parse(today()) - n * 864e5).toISOString().slice(0, 10);
 function showInList(patch) { Object.assign(flt.stock, patch); renderStock(); $('stockTable').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 function renderStockDetail(all) {
@@ -776,7 +786,7 @@ function renderStockDetail(all) {
 }
 function renderStock(refreshBar = true) {
   const t = T();
-  if (refreshBar) filterBar($('fStock'), 'stock', ['date', 'q', 'sort']);
+  if (refreshBar) filterBar($('fStock'), 'stock', ['view', 'date', 'q', 'sort']);
   const all = I.filter(i => status(i) === 'stock');
   const oldest = all.reduce((m, i) => { const d = payById.get(i.payment_id).pay_date; return !m || d < m ? d : m; }, '');
   const ages = all.map(i => daysSince(payById.get(i.payment_id).pay_date));
@@ -787,9 +797,25 @@ function renderStock(refreshBar = true) {
   $('stockStats').querySelectorAll('[data-card]').forEach(b => b.onclick = () => { stockCard = stockCard === b.dataset.card ? null : b.dataset.card; renderStock(false); });
   renderStockDetail(all);
   $('stockStats').classList.toggle('still', !refreshBar);   // replay card entrance only on full renders, not on every filter keystroke
-  const list = itemList('stock');
-  itemTable($('stockTable'), 'stock', list);
-  stockSelChanged(list.length);
+  const list = itemList('stock'), byBill = flt.stock.view === 'bill';
+  $('stockBillsWrap').hidden = !byBill; $('stockTableWrap').hidden = byBill;
+  if (!byBill) { itemTable($('stockTable'), 'stock', list); return stockSelChanged(list.length); }
+  // by-bill view: same sel.stock item ids, a bill row toggles all of its remaining stock items
+  const bills = [...new Map(list.map(i => [i.payment_id, payById.get(i.payment_id)])).values()];
+  const stockOf = p => (itemsByPay.get(p.id) || []).filter(i => status(i) === 'stock');
+  const allOn = p => stockOf(p).every(i => sel.stock.has(i.id));
+  $('stockBills').innerHTML = `<thead><tr><th><input type="checkbox" id="billAll" aria-label="${t.selectAll}" ${bills.length && bills.every(allOn) ? 'checked' : ''}></th><th>${t.payDate}</th><th class="n">${t.cardAmt}</th><th class="n">${t.stockItems}</th><th class="n">${t.qty}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th></tr></thead><tbody>` +
+    (bills.map(p => { const its = stockOf(p), on = allOn(p);
+      return `<tr class="${on ? 'sel' : ''}"><td><input type="checkbox" data-bsel="${p.id}" ${on ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td>` +
+        `<td class="n"><button class="linkbtn" data-bopen="${p.id}" aria-expanded="${openStock.has(p.id)}">₩${won(p.amount)}</button></td>` +
+        `<td class="n">${won(its.length)}</td><td class="n">${won(sumBy(its, i => i.qty))}</td><td class="n">₩${won(sumBy(its, i => i.qty * i.price))}</td><td class="n">${kg(sumBy(its, i => i.weight))}</td></tr>` +
+        (openStock.has(p.id) ? `<tr class="sub"><td colspan="7">${billItems(itemsByPay.get(p.id) || [])}</td></tr>` : ''); }).join('') ||
+    `<tr><td colspan="7" class="empty">${t.none}</td></tr>`) + '</tbody>';
+  const pick = (p, on) => stockOf(p).forEach(i => on ? sel.stock.add(i.id) : sel.stock.delete(i.id));
+  $('billAll').onchange = e => { bills.forEach(p => pick(p, e.target.checked)); renderStock(false); };
+  $('stockBills').querySelectorAll('[data-bsel]').forEach(c => c.onchange = () => { pick(payById.get(+c.dataset.bsel), c.checked); renderStock(false); });
+  $('stockBills').querySelectorAll('[data-bopen]').forEach(b => b.onclick = () => { const id = +b.dataset.bopen; openStock.has(id) ? openStock.delete(id) : openStock.add(id); renderStock(false); });
+  stockSelChanged(bills.length);
 }
 function stockSelChanged(shown = $('stockTable').querySelectorAll('tbody tr[data-id]').length) {
   const s = selTotals(sel.stock), t = T();
@@ -833,7 +859,7 @@ $('doneUndo').onclick = async () => {
   catch (err) { alert(t.syncFail(err.message)); }
 };
 const itemXlsxRows = (list, done) => { const t = T(); return list.map(i => { const p = payById.get(i.payment_id);
-  return { ...(done ? { [t.exportDate]: i.exported_on, [t.exportRef]: i.export_ref || '' } : { [t.ageCol]: daysSince(p.pay_date) }), [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight }; }); };
+  return { ...(done ? { [t.exportDate]: i.exported_on, [t.exportRef]: i.export_ref || '' } : { [t.ageCol]: daysSince(p.pay_date) }), [t.payDate]: p.pay_date, [t.cardAmt]: p.amount, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight }; }); };
 $('stockXlsx').onclick = () => xlsxOut(itemXlsxRows(itemList('stock'), false), T().shStock);
 $('doneXlsx').onclick = () => xlsxOut(itemXlsxRows(itemList('done'), true), T().shDone);
 $('doneCustoms').onclick = () => {
@@ -855,11 +881,11 @@ function renderRef(refreshBar = true) {
   if (refreshBar) filterBar($('fRef'), 'ref', ['date', 'rs']);
   const list = refList();
   $('refSum').textContent = t.refSum(won(F.length), won(F.filter(r => !r.payment_id).length));
-  $('refTable').innerHTML = `<thead><tr><th>${t.refStatus}</th><th>${t.txDate}</th><th class="n">${t.row}</th><th class="n">${t.refAmt}</th><th>${t.note}</th><th>${t.linkedPay}</th><th>${t.returnDate}</th><th class="n">${t.diff}</th></tr></thead><tbody>` +
+  $('refTable').innerHTML = `<thead><tr><th>${t.refStatus}</th><th>${t.txDate}</th><th class="n">${t.refAmt}</th><th>${t.note}</th><th>${t.linkedPay}</th><th>${t.returnDate}</th><th class="n">${t.diff}</th></tr></thead><tbody>` +
     (list.map(r => { const p = r.payment_id && payById.get(r.payment_id);
-      return `<tr class="${p ? '' : 'ret'}"><td>${p ? `<span class="tag exp">${t.linked}</span> <button class="btn ghost sm" data-unret="${p.id}">${t.undoReturn}</button>` :`<button class="btn sm" data-link="${r.id}">${t.linkBtn}</button>`}</td><td>${r.tx_date}</td><td class="n">${r.src_row ?? ''}</td><td class="n">₩${won(r.amount)}</td><td class="wrap">${esc(r.note)}</td>` +
+      return `<tr class="${p ? '' : 'ret'}"><td>${p ? `<span class="tag exp">${t.linked}</span> <button class="btn ghost sm" data-unret="${p.id}">${t.undoReturn}</button>` :`<button class="btn sm" data-link="${r.id}">${t.linkBtn}</button>`}</td><td>${r.tx_date}</td><td class="n">₩${won(r.amount)}</td><td class="wrap">${esc(r.note)}</td>` +
         `<td>${p ? `${p.pay_date} · ₩${won(p.amount)}` : ''}</td><td>${r.return_date || ''}</td><td class="n">${p ? '₩' + won(p.amount + r.amount) : ''}</td></tr>`; }).join('') ||
-    `<tr><td colspan="8" class="empty">${t.none}</td></tr>`) + '</tbody>';
+    `<tr><td colspan="7" class="empty">${t.none}</td></tr>`) + '</tbody>';
   $('refTable').querySelectorAll('[data-link]').forEach(b => b.onclick = () => openLink(+b.dataset.link));
   $('refTable').querySelectorAll('[data-unret]').forEach(b => b.onclick = () => { const p = payById.get(+b.dataset.unret);
     if (confirm(t.undoReturnAsk(p.pay_date, won(p.amount)))) payAction(() => sb.rpc('undo_return', { pay_id: p.id }).then(ok)); });
@@ -881,9 +907,9 @@ function renderLink() {
   $('linkCard').innerHTML = `<h2>${t.linkTitle(r.tx_date, won(r.amount))}</h2><p class="muted">${t.linkHelp}</p>
     <div class="filters"><div class="f"><span>${t.payDate}</span><div class="row"><input type="date" id="lkFrom" value="${lk.from}"> ~ <input type="date" id="lkTo" value="${lk.to}"></div></div>
     <label class="f"><span>&nbsp;</span><span class="row"><input type="checkbox" id="lkMatch" ${lk.match ? 'checked' : ''}> ${t.amtMatch} (₩${won(-r.amount)})</span></label></div>
-    <div class="scroll" style="max-height:40vh"><table><thead><tr><th>${t.pick}</th><th>${t.payDate}</th><th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th>${t.items}</th><th>${t.status}</th></tr></thead><tbody>
-    ${cands.map(p => `<tr><td><input type="radio" name="lkPick" value="${p.id}" ${lk.pick === p.id ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td><td class="n">${p.src_row ?? ''}</td><td class="n">₩${won(p.amount)}</td>
-      <td class="wrap">${esc((itemsByPay.get(p.id) || []).map(i => `${catLabel(i.name)}×${won(i.qty)}`).join(', ') || p.note || t.noItems)}</td><td>${payStatusCell(p)}</td></tr>`).join('') || `<tr><td colspan="6" class="empty">${t.none}</td></tr>`}
+    <div class="scroll" style="max-height:40vh"><table><thead><tr><th>${t.pick}</th><th>${t.payDate}</th><th class="n">${t.cardAmt}</th><th>${t.items}</th><th>${t.status}</th></tr></thead><tbody>
+    ${cands.map(p => `<tr><td><input type="radio" name="lkPick" value="${p.id}" ${lk.pick === p.id ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td><td class="n">₩${won(p.amount)}</td>
+      <td class="wrap">${esc((itemsByPay.get(p.id) || []).map(i => `${catLabel(i.name)}×${won(i.qty)}`).join(', ') || p.note || t.noItems)}</td><td>${payStatusCell(p)}</td></tr>`).join('') || `<tr><td colspan="5" class="empty">${t.none}</td></tr>`}
     </tbody></table></div>
     ${blocked ? `<div class="warnlist" style="padding-left:14px">${t.linkBlocked}</div>` : ''}
     <div class="panel" style="margin:12px 0 0"><span>${t.returnDate}</span><input type="date" id="lkDate" value="${lk.date}">
@@ -904,7 +930,7 @@ function renderLink() {
   };
 }
 $('refXlsx').onclick = () => { const t = T(); xlsxOut(refList().map(r => { const p = r.payment_id && payById.get(r.payment_id);
-  return { [t.txDate]: r.tx_date, [t.row]: r.src_row ?? '', [t.refAmt]: r.amount, [t.note]: r.note, [t.refStatus]: p ? t.linked : t.pending,
+  return { [t.txDate]: r.tx_date,[t.refAmt]: r.amount, [t.note]: r.note, [t.refStatus]: p ? t.linked : t.pending,
     [t.linkedPay + ' ' + t.payDate]: p ? p.pay_date : '', [t.linkedPay + ' ' + t.cardAmt]: p ? p.amount : '', [t.returnDate]: r.return_date || '', [t.diff]: p ? p.amount + r.amount : '',
     [t.items]: p ? (itemsByPay.get(p.id) || []).map(i => `${i.name}×${i.qty}`).join(', ') : '' }; }), t.shRef); };
 
@@ -933,7 +959,7 @@ function renderPreview() {
   const dups = x.payments.filter(p => p.dupOf), pays = x.dupOk ? x.payments : x.payments.filter(p => !p.dupOf);
   const any = pays.length || x.refunds.length;
   $('xlPreview').innerHTML = `<p>${t.preview(won(pays.length), won(x.refunds.length), won(x.skipP), won(x.skipR))}</p>` +
-    (dups.length ? `<div class="warnlist" style="padding-left:14px"><b>${t.dupTitle(won(dups.length))}</b><ul style="margin:6px 0;padding-left:18px">${dups.map(p => `<li>${esc(t.dupRow(p.src_row, p.pay_date, won(p.amount), p.dupOf.src_row ? t.row + ' ' + p.dupOf.src_row : t.manualEntry))}</li>`).join('')}</ul>
+    (dups.length ? `<div class="warnlist" style="padding-left:14px"><b>${t.dupTitle(won(dups.length))}</b><ul style="margin:6px 0;padding-left:18px">${dups.map(p => `<li>${esc(t.dupRow(p.src_row, p.pay_date, won(p.amount), p.dupOf.upload_id ? U.find(u => u.id === p.dupOf.upload_id)?.file_name || '' : t.manualEntry))}</li>`).join('')}</ul>
       <label><input type="checkbox" id="xlDup" ${x.dupOk ? 'checked' : ''}> ${t.dupInclude}</label></div>` : '') +
     (x.warn.length ? `<ul class="warnlist">${x.warn.map(w => `<li>${esc(T().w[w.k](w))}</li>`).join('')}</ul>` : '') +
     (pays.length ? `<p><b>${t.pvTitle}</b></p><div class="scroll" style="max-height:46vh"><table><thead><tr><th class="n">${t.row}</th><th>${t.payDate}</th><th class="n">${t.cardAmt}</th><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th></tr></thead><tbody>` +
@@ -1053,7 +1079,7 @@ $('backup').onclick = () => {
   if (!P.length && !F.length) return alert(t.nothing);
   const json = JSON.stringify({ v: 2, payments: P, items: I, refunds: F }), chunks = [];
   for (let k = 0; k < json.length; k += 30000) chunks.push([json.slice(k, k + 30000)]);   // Excel cell limit 32,767 chars
-  const flat = P.flatMap(p => { const its = itemsByPay.get(p.id) || []; const b = { [t.payDate]: p.pay_date, [t.row]: p.src_row ?? '', [t.cardAmt]: p.amount, [t.note]: p.note, [t.returnDate]: p.returned_on || '', [t.psCxl]: p.canceled_on ? `${p.canceled_on} ${p.cancel_note}` : '' };
+  const flat = P.flatMap(p => { const its = itemsByPay.get(p.id) || []; const b = { [t.payDate]: p.pay_date, [t.cardAmt]: p.amount, [t.note]: p.note, [t.returnDate]: p.returned_on || '', [t.psCxl]: p.canceled_on ? `${p.canceled_on} ${p.cancel_note}` : '' };
     return its.length ? its.map(i => ({ ...b, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.weightCol]: i.weight, [t.status]: t.st[status(i)], [t.exportDate]: i.exported_on || '', [t.exportRef]: i.export_ref || '' })) : [b]; });
   const refs = F.map(r => ({ [t.txDate]: r.tx_date, [t.refAmt]: r.amount, [t.note]: r.note, [t.linkedPay]: r.payment_id ? payById.get(r.payment_id)?.pay_date : '', [t.returnDate]: r.return_date || '' }));
   const wb = XLSX.utils.book_new();
