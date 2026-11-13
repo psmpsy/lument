@@ -233,7 +233,7 @@
   <section id="tab-pay">
     <div class="card">
       <div class="filters" id="fPay"></div>
-      <div class="selbar"><span class="sum" id="paySum"></span><span class="grow"></span><button class="btn ghost sm" id="payXlsx" data-i18n="xlsx"></button></div>
+      <div class="selbar"><span class="sum" id="paySum"></span><span class="grow"></span><button class="btn ghost sm" id="payXlsx" data-i18n="xlsx"></button><button class="btn danger sm" id="payDel" data-i18n="delSel"></button></div>
       <div class="scroll"><table id="payTable"></table></div>
     </div>
   </section>
@@ -297,8 +297,12 @@
       <div class="card">
         <h2 data-i18n="xlUpload"></h2>
         <p class="muted" data-i18n="xlUploadHelp"></p>
-        <label class="btn"><span data-i18n="chooseFile"></span><input type="file" id="xlFile" accept=".xlsx,.xls" hidden></label>
+        <div class="subacts"><label class="btn"><span data-i18n="chooseFile"></span><input type="file" id="xlFile" accept=".xlsx,.xls" hidden></label>
+          <button type="button" class="btn ghost" id="xlTemplate" data-i18n="template"></button></div>
         <div id="xlPreview"></div>
+        <h2 style="margin-top:24px" data-i18n="upHist"></h2>
+        <p class="muted" data-i18n="upHistHelp"></p>
+        <div class="scroll"><table id="upTable"></table></div>
       </div>
       <div class="card">
         <h2 data-i18n="manual"></h2>
@@ -322,27 +326,41 @@
 
 <!-- core: Excel parsing, no DOM; also run by the test script -->
 <script id="core">
-const SLOTS = [['E','F','G','H'], ['I','J','K','L'], ['M','N','O','P'], ['Q','R','S','T']];
-const num = v => typeof v === 'number' && isFinite(v) ? v : null;
+// numbers may come as text: "₩33,000", "33,000원", "1.5kg", " 10 "
+const num = v => {
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  const s = String(v ?? '').replace(/[₩￦,\s]|원|kg/gi, '');
+  return s && isFinite(Number(s)) ? Number(s) : null;
+};
 const won = n => Math.round(n).toLocaleString('ko-KR');
 const kg = n => (Math.round(n * 100) / 100).toLocaleString('ko-KR');
 const serialToISO = s => new Date(Math.round((s - 25569) * 864e5)).toISOString().slice(0, 10);
+// A cell: Excel date serial, or text like 2026-11-13 / 2026.11.13 / 2026/11/13
+const cellDate = a => {
+  if (!a) return null;
+  if (a.t === 'n') return serialToISO(a.v);
+  const m = /^(\d{4})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})/.exec(String(a.v).trim());
+  return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : null;
+};
 
-// Reads columns A–T only (hidden B,C ignored). Row with a date in A = one card payment; negative D = refund.
+// Layout: A 구매일, B 카드 결제 총액(VAT 포함), then per product 4 columns from C: 상품명, 수량, 단가, 총중량(kg) (C–F, G–J, K–N, …).
+// One row = one card payment; negative B = refund. Weight is the total for that product line, not per unit.
 // src_key identifies a row across re-uploads: same date+amount+items (+ordinal for exact duplicates).
 // shortcut: editing an already-imported row in Excel changes its key, so it would import again as new → shown in the preview first.
 function parseSheet(ws) {
   const payments = [], refunds = [], warn = [], seen = {};
-  const last = XLSX.utils.decode_range(ws['!ref']).e.r + 1;
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1'), last = range.e.r + 1, col = XLSX.utils.encode_col;
+  const SLOTS = [];
+  for (let c = 2; c <= range.e.c; c += 4) SLOTS.push([col(c), col(c + 1), col(c + 2), col(c + 3)]);
   const val = (c, r) => { const x = ws[c + r]; return x ? x.v : undefined; };
   const keyOf = base => { seen[base] = (seen[base] || 0) + 1; return base + '#' + seen[base]; };
   for (let r = 2; r <= last; r++) {
-    const a = ws['A' + r];
-    if (!a || a.t !== 'n') {
-      if (a && a.t === 's' && a.v.trim() && a.v.trim() !== '合计') warn.push({ k: 'notDate', r, v: a.v });
+    const a = ws['A' + r], date = cellDate(a);
+    if (!date) {
+      if (a && String(a.v).trim() && !['合计', '합계'].includes(String(a.v).trim())) warn.push({ k: 'notDate', r, v: a.v });
       continue;
     }
-    const date = serialToISO(a.v), amount = num(val('D', r)) ?? 0;
+    const amount = num(val('B', r)) ?? 0;
     const items = [], notes = [];
     SLOTS.forEach(([cn, cq, cp, cw]) => {
       const name = String(val(cn, r) ?? '').trim(), qty = num(val(cq, r));
@@ -363,6 +381,14 @@ function parseSheet(ws) {
     payments.push({ pay_date: date, amount, note, src_row: r, src_key: keyOf(['P', date, amount, sig].join('|')), items });
   }
   return { payments, refunds, warn };
+}
+// blank upload form in the same layout parseSheet reads
+function templateSheet(heads, slots = 5) {
+  const [date, amt, name, qty, price, w] = heads, row = [date, amt];
+  for (let k = 1; k <= slots; k++) row.push(name + k, qty + k, price + k, w + k);
+  const ws = XLSX.utils.aoa_to_sheet([row]);
+  ws['!cols'] = row.map((_, k) => ({ wch: k < 2 ? 22 : 12 }));
+  return ws;
 }
 </script>
 
@@ -398,14 +424,22 @@ const I18N = {
     linkBlocked: '이 결제건에는 이미 수출된 상품이 있어 전체 반품을 할 수 없어요. 과거 기록을 확인해 주세요.',
     linkAsk: (d, a, r) => `${d} 결제건(₩${a})을 반품일 ${r}로 반품 처리할까요?\n이 결제건의 상품은 재고·수출 목록에서 빠져요.`,
     retTag: d => `반품 ${d}`, refundOf: a => `환불 ₩${a}`,
-    xlUpload: 'Excel 업로드', xlUploadHelp: '구매 엑셀(A–T열)을 올리면 이미 들어간 결제건은 건너뛰고 새 결제건만 추가해요. 결제금액(D열)이 음수인 행은 환불 거래로 들어가요.',
+    xlUpload: 'Excel 업로드', xlUploadHelp: '한 행 = 카드 결제 1건. A 구매일, B 카드 결제 총액(부가세 포함), C–F 상품명·수량·단가·총중량(kg), G–J 두 번째 상품, K열부터 같은 방식으로 이어져요. 이미 들어간 결제건은 건너뛰고, B열이 음수인 행은 환불 거래로 들어가요.',
+    template: '양식 다운로드', tplFile: '구매_업로드_양식', vat: '(부가세 포함)',
+    pvMore: n => `… 외 ${n}건`, pvTitle: '미리보기 (가져오기 전에 확인하세요)',
+    upHist: '업로드 이력', upHistHelp: '잘못 올린 파일은 여기서 통째로 삭제할 수 있어요.', upTime: '업로드 시각', upFile: '파일', upDel: '이 업로드 전체 삭제',
+    upAsk: (f, p, r) => `"${f}" 업로드로 들어온 결제건 ${p}건 · 환불 ${r}건을 모두 삭제할까요?\n삭제하면 되돌릴 수 없어요.`,
+    delSel: '선택 결제건 삭제', delPay: '이 결제건 삭제', needPaySel: '먼저 결제건을 체크하세요',
+    delAsk: n => `결제건 ${n}건과 그 상품을 삭제할까요?\n삭제하면 되돌릴 수 없어요.`,
+    delProtected: n => `⚠ 이 중 ${n}건은 이미 수출 또는 반품·환불 처리된 데이터예요.\n삭제하면 수출 기록이 사라지고 연결된 환불은 "확인 필요"로 돌아가요.\n정말 함께 삭제할까요?`,
+    deleted: (p, r) => `결제건 ${p}건${r ? `, 환불 ${r}건` : ''}을 삭제했어요`,
     chooseFile: '파일 선택', preview: (p, r, sp, sr) => `새 결제건 <b>${p}</b>건, 새 환불 <b>${r}</b>건을 가져와요. (이미 있는 결제건 ${sp}건 · 환불 ${sr}건은 건너뜀)`,
     importGo: '가져오기', imported: (p, r) => `결제건 ${p}건, 환불 ${r}건을 추가했어요`, nothingNew: '새로 추가할 내용이 없어요',
     manual: '직접 입력', manualHelp: '금액을 음수로 넣으면 환불 거래로 저장되고 바로 연결 화면이 열려요(상품 입력은 무시).',
     addItem: '+ 상품 줄 추가', fillTitle: '상품 채워 넣기', fillHelp: '이 결제건에서 산 상품을 넣으면 재고로 들어가요.', fillSave: '상품 저장', fillNeed: '상품을 한 줄 이상 넣어주세요', save: '저장', del: '삭제', saved: '저장했어요',
     mErrDate: '구매일을 넣어주세요', mErrAmt: '카드 결제 총액을 숫자로 넣어주세요', mErrItem: n => `${n}번째 상품 줄: 상품명과 0보다 큰 수량이 필요해요`,
     w: {
-      notDate: x => `${x.r}행 A열 "${x.v}"는 날짜가 아니라서 건너뜀`,
+      notDate: x => `${x.r}행 A열 "${x.v}"는 날짜가 아니라서 건너뜀 (예: 2026-11-13)`,
       badPrice: x => `${x.r}행 ${x.c}열 단가가 숫자가 아님 → 0으로 처리`,
       badWeight: x => `${x.r}행 ${x.c}열 중량 "${x.v}"가 숫자가 아님 → 0으로 처리`,
       mismatch: x => `${x.r}행 결제금액 ₩${won(x.a)} ≠ 상품 합계 ₩${won(x.b)}`,
@@ -456,7 +490,15 @@ const I18N = {
     linkBlocked: '该付款中已有商品出口，无法整笔退货。请检查历史记录。',
     linkAsk: (d, a, r) => `确认将 ${d} 的付款（₩${a}）按退货日期 ${r} 办理退货吗？\n该付款的商品将从库存和出口列表中移除。`,
     retTag: d => `退货 ${d}`, refundOf: a => `退款 ₩${a}`,
-    xlUpload: '上传 Excel', xlUploadHelp: '上传采购 Excel（A–T 列）后，已导入的付款会跳过，只添加新付款。付款金额（D 列）为负数的行将作为退款交易导入。',
+    xlUpload: '上传 Excel', xlUploadHelp: '一行 = 一笔刷卡付款。A 采购日期，B 刷卡总额（含增值税），C–F 品名·数量·单价·总重量(kg)，G–J 第二个商品，K 列起依此类推。已导入的付款会跳过，B 列为负数的行将作为退款交易导入。',
+    template: '下载模板', tplFile: '采购上传模板', vat: '（含增值税）',
+    pvMore: n => `… 另有 ${n} 笔`, pvTitle: '预览（导入前请确认）',
+    upHist: '上传记录', upHistHelp: '上传错误的文件可在此整批删除。', upTime: '上传时间', upFile: '文件', upDel: '删除此次上传全部数据',
+    upAsk: (f, p, r) => `要删除通过“${f}”上传的付款 ${p} 笔 · 退款 ${r} 笔吗？\n删除后无法恢复。`,
+    delSel: '删除所选付款', delPay: '删除此付款', needPaySel: '请先勾选付款',
+    delAsk: n => `要删除 ${n} 笔付款及其商品吗？\n删除后无法恢复。`,
+    delProtected: n => `⚠ 其中 ${n} 笔已办理出口或退货·退款。\n删除后出口记录将消失，关联的退款将恢复为“需要确认”。\n确定一并删除吗？`,
+    deleted: (p, r) => `已删除付款 ${p} 笔${r ? `、退款 ${r} 笔` : ''}`,
     chooseFile: '选择文件', preview: (p, r, sp, sr) => `将导入新付款 <b>${p}</b> 笔、新退款 <b>${r}</b> 笔。（已存在的付款 ${sp} 笔、退款 ${sr} 笔将跳过）`,
     importGo: '导入', imported: (p, r) => `已添加付款 ${p} 笔、退款 ${r} 笔`, nothingNew: '没有需要新增的内容',
     manual: '手动录入', manualHelp: '金额填负数时将保存为退款交易，并直接打开关联界面（忽略商品行）。',
@@ -502,7 +544,7 @@ const sb = supabase.createClient('https://hymiapuytoelwerwhejj.supabase.co',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5bWlhcHV5dG9lbHdlcndoZWpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0Nzg3MzQsImV4cCI6MjExMDA1NDczNH0.xSW7RRwri0PW1-xUtbaQ-TTwudkLX_RRdSWZDdHJhEU');
 
 /* ---------- data ---------- */
-let P = [], I = [], F = [];           // payments, items, refunds (raw rows)
+let P = [], I = [], F = [], U = [];   // payments, items, refunds, uploads (raw rows)
 let payById = new Map(), itemsByPay = new Map(), refByPay = new Map();
 const status = it => { const p = payById.get(it.payment_id); return p?.canceled_on ? 'canceled' : p?.returned_on ? 'returned' : it.exported_on ? 'exported' : 'stock'; };
 const daysSince = d => Math.floor((Date.parse(today()) - Date.parse(d)) / 864e5);
@@ -516,10 +558,11 @@ async function fetchAll(table, cols) {   // PostgREST returns max 1000 rows per 
   }
 }
 async function loadAll() {
-  [P, I, F] = await Promise.all([
-    fetchAll('payments', 'id,pay_date,amount,note,src_key,src_row,returned_on,canceled_on,cancel_note'),
+  [P, I, F, U] = await Promise.all([
+    fetchAll('payments', 'id,pay_date,amount,note,src_key,src_row,returned_on,canceled_on,cancel_note,upload_id'),
     fetchAll('items', 'id,payment_id,name,qty,price,weight,exported_on,export_ref'),
-    fetchAll('refunds', 'id,tx_date,amount,note,src_key,src_row,payment_id,return_date'),
+    fetchAll('refunds', 'id,tx_date,amount,note,src_key,src_row,payment_id,return_date,upload_id'),
+    fetchAll('uploads', 'id,file_name,created_at'),
   ]);
   P.forEach(p => { p.amount = +p.amount; });
   I.forEach(i => { i.qty = +i.qty; i.price = +i.price; i.weight = +i.weight; });
@@ -529,6 +572,7 @@ async function loadAll() {
   refByPay = new Map(F.filter(f => f.payment_id).map(f => [f.payment_id, f]));
   sel.stock.forEach(id => { const i = I.find(x => x.id === id); if (!i || status(i) !== 'stock') sel.stock.delete(id); });
   sel.done.forEach(id => { const i = I.find(x => x.id === id); if (!i || status(i) !== 'exported') sel.done.delete(id); });
+  sel.pay.forEach(id => { if (!payById.has(id)) sel.pay.delete(id); });
 }
 const reload = async () => { await busy(loadAll); renderAll(); };
 
@@ -539,7 +583,7 @@ const flt = {
   done: { from: '', to: '', ef: '', et: '', q: '', ref: '', cats: new Set(), sort: 'desc' },
   ref: { from: '', to: '', rs: 'all' },
 };
-const sel = { stock: new Set(), done: new Set() };
+const sel = { stock: new Set(), done: new Set(), pay: new Set() };
 const cats = () => [...new Set(I.map(i => i.name || ''))].sort((a, b) => a.localeCompare(b));
 const catLabel = c => c || T().noItems;
 const itemMatch = (i, f) => (!f.cats.size || f.cats.has(i.name || '')) && (!f.q || (i.name || '').toLowerCase().includes(f.q.toLowerCase()));
@@ -617,7 +661,7 @@ function itemRowsTable(p) {
   const t = T(), its = itemsByPay.get(p.id) || [];
   const acts = p.canceled_on ? `<button class="btn ghost sm" data-uncancel="${p.id}">${t.uncancel}</button>`
     : !p.returned_on && !its.some(i => i.exported_on) ? `<button class="btn danger sm" data-cancel="${p.id}">${t.cancelPay}</button>` : '';
-  const actRow = acts ? `<div class="subacts">${acts}</div>` : '';
+  const actRow = `<div class="subacts">${acts}<button class="btn danger sm" data-del="${p.id}">${t.delPay}</button></div>`;
   const fill = p.canceled_on || p.returned_on ? '' : `<h3 style="margin:12px 0 4px">${t.fillTitle}</h3><p class="muted" style="margin:0">${t.fillHelp}</p>
     <table class="itemsform"><thead><tr><th>${t.name}</th><th>${t.qty}</th><th>${t.price}</th><th>${t.weightCol}</th><th></th></tr></thead><tbody data-fill="${p.id}"></tbody></table>
     <div class="subacts"><button type="button" class="btn ghost sm" data-filladd="${p.id}">${t.addItem}</button><button type="button" class="btn sm" data-fillsave="${p.id}">${t.fillSave}</button></div><p class="err" data-fillerr="${p.id}" role="alert"></p>`;
@@ -625,18 +669,38 @@ function itemRowsTable(p) {
   return `<table><thead><tr><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th><th>${t.status}</th><th>${t.exportDate}</th><th>${t.exportRef}</th></tr></thead><tbody>` +
     its.map(i => { const s = status(i); return `<tr><td class="wrap">${esc(catLabel(i.name))}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td><td><span class="tag ${{ stock: 'stock', exported: 'exp', returned: 'ret', canceled: '' }[s]}">${t.st[s]}</span></td><td>${i.exported_on || ''}</td><td class="wrap">${esc(i.export_ref)}</td></tr>`; }).join('') + '</tbody></table>' + actRow;
 }
+// delete with a second, explicit confirm when the server reports exported/returned/refund-linked rows (PROTECTED:n)
+async function deleteFlow(ask, call) {
+  const t = T();
+  if (!confirm(ask)) return;
+  let res;
+  try { res = await busy(() => call(false)); }
+  catch (err) {
+    const m = /PROTECTED:(\d+)/.exec(err.message);
+    if (!m) return alert(t.syncFail(err.message));
+    if (!confirm(t.delProtected(won(+m[1])))) return;
+    try { res = await busy(() => call(true)); } catch (e2) { return alert(t.syncFail(e2.message)); }
+  }
+  open.clear(); await reload();
+  alert(typeof res === 'number' ? t.deleted(won(res), 0) : t.deleted(won(res.payments), res.refunds));
+}
+const deletePays = ids => deleteFlow(T().delAsk(won(ids.length)), force => sb.rpc('delete_payments', { ids, force }).then(ok));
 async function payAction(fn) { try { await busy(fn); await reload(); } catch (err) { alert(/HAS_EXPORTED_ITEMS|NOT_CANCELABLE/.test(err.message) ? T().cancelBlocked : T().syncFail(err.message)); } }
 function renderPay(refreshBar = true) {
   const t = T();
   if (refreshBar) filterBar($('fPay'), 'pay', ['date', 'cats', 'q', 'ps']);
   const list = payList();
   $('paySum').innerHTML = t.paySum(won(list.length), won(sumBy(list, p => p.canceled_on ? 0 : p.amount))) + ` · <span class="muted">${t.expandHint}</span>`;
-  $('payTable').innerHTML = `<thead><tr><th>${t.payDate}</th><th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th class="n">${t.items}</th><th>${t.status}</th><th>${t.note}</th></tr></thead><tbody>` +
-    (list.map(p => `<tr class="${p.canceled_on ? 'cxl' : p.returned_on ? 'ret' : ''}"><td>${p.pay_date}</td><td class="n">${p.src_row ?? ''}</td>` +
+  $('payTable').innerHTML = `<thead><tr><th><input type="checkbox" id="payAll" aria-label="${t.selectAll}" ${list.length && list.every(p => sel.pay.has(p.id)) ? 'checked' : ''}></th><th>${t.payDate}</th><th class="n">${t.row}</th><th class="n">${t.cardAmt}</th><th class="n">${t.items}</th><th>${t.status}</th><th>${t.note}</th></tr></thead><tbody>` +
+    (list.map(p => `<tr class="${p.canceled_on ? 'cxl' : p.returned_on ? 'ret' : ''}"><td><input type="checkbox" data-psel="${p.id}" ${sel.pay.has(p.id) ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td><td class="n">${p.src_row ?? ''}</td>` +
       `<td class="n"><button class="linkbtn" data-open="${p.id}" aria-expanded="${open.has(p.id)}">₩${won(p.amount)}</button></td>` +
       `<td class="n">${(itemsByPay.get(p.id) || []).length}</td><td>${payStatusCell(p)}</td><td class="wrap">${esc(p.note)}</td></tr>` +
-      (open.has(p.id) ? `<tr class="sub"><td colspan="6">${itemRowsTable(p)}</td></tr>` : '')).join('') ||
-    `<tr><td colspan="6" class="empty">${t.none}</td></tr>`) + '</tbody>';
+      (open.has(p.id) ? `<tr class="sub"><td colspan="7">${itemRowsTable(p)}</td></tr>` : '')).join('') ||
+    `<tr><td colspan="7" class="empty">${t.none}</td></tr>`) + '</tbody>';
+  $('payDel').textContent = t.delSel + (sel.pay.size ? ` (${won(sel.pay.size)})` : '');
+  $('payAll').onchange = e => { list.forEach(p => e.target.checked ? sel.pay.add(p.id) : sel.pay.delete(p.id)); renderPay(false); };
+  $('payTable').querySelectorAll('[data-psel]').forEach(c => c.onchange = () => { c.checked ? sel.pay.add(+c.dataset.psel) : sel.pay.delete(+c.dataset.psel); renderPay(false); });
+  $('payTable').querySelectorAll('[data-del]').forEach(b => b.onclick = () => deletePays([+b.dataset.del]));
   $('payTable').querySelectorAll('[data-open]').forEach(b => b.onclick = () => { const id = +b.dataset.open; open.has(id) ? open.delete(id) : open.add(id); renderPay(false); });
   $('payTable').querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => {
     const note = prompt(t.cancelPrompt); if (note === null) return;
@@ -654,6 +718,7 @@ function renderPay(refreshBar = true) {
   });
   $('payTable').querySelectorAll('[data-uncancel]').forEach(b => b.onclick = () => { if (confirm(t.uncancelAsk)) payAction(() => sb.rpc('uncancel_payment', { pay_id: +b.dataset.uncancel }).then(ok)); });
 }
+$('payDel').onclick = () => sel.pay.size ? deletePays([...sel.pay]) : alert(T().needPaySel);
 $('payXlsx').onclick = () => {
   const t = T();
   const rows = payList().slice().reverse().flatMap(p => { const its = itemsByPay.get(p.id) || [], r = refByPay.get(p.id);
@@ -846,7 +911,7 @@ $('xlFile').onchange = async e => {
     const parsed = parseSheet(wb.Sheets[wb.SheetNames[0]]);
     if (!parsed.payments.length && !parsed.refunds.length) throw new Error(t.noRows);
     const pk = new Set(P.map(p => p.src_key)), rk = new Set(F.map(r => r.src_key));
-    pending = { payments: parsed.payments.filter(p => !pk.has(p.src_key)), refunds: parsed.refunds.filter(r => !rk.has(r.src_key)), warn: parsed.warn,
+    pending = { file: f.name, payments: parsed.payments.filter(p => !pk.has(p.src_key)), refunds: parsed.refunds.filter(r => !rk.has(r.src_key)), warn: parsed.warn,
       skipP: parsed.payments.filter(p => pk.has(p.src_key)).length, skipR: parsed.refunds.filter(r => rk.has(r.src_key)).length, dupOk: false };
     // suspect = new row with same date+amount as a saved payment that this file no longer contains (row edited in Excel, or entered by hand)
     const fileKeys = new Set(parsed.payments.map(p => p.src_key)), orphan = new Map();
@@ -864,7 +929,12 @@ function renderPreview() {
     (dups.length ? `<div class="warnlist" style="padding-left:14px"><b>${t.dupTitle(won(dups.length))}</b><ul style="margin:6px 0;padding-left:18px">${dups.map(p => `<li>${esc(t.dupRow(p.src_row, p.pay_date, won(p.amount), p.dupOf.src_row ? t.row + ' ' + p.dupOf.src_row : t.manualEntry))}</li>`).join('')}</ul>
       <label><input type="checkbox" id="xlDup" ${x.dupOk ? 'checked' : ''}> ${t.dupInclude}</label></div>` : '') +
     (x.warn.length ? `<ul class="warnlist">${x.warn.map(w => `<li>${esc(T().w[w.k](w))}</li>`).join('')}</ul>` : '') +
-    (any ? `<button class="btn" id="xlGo">${t.importGo}</button> <button class="btn ghost" id="xlCancel">${t.cancel}</button>` : `<p class="muted">${t.nothingNew}</p>`);
+    (pays.length ? `<p><b>${t.pvTitle}</b></p><div class="scroll" style="max-height:46vh"><table><thead><tr><th class="n">${t.row}</th><th>${t.payDate}</th><th class="n">${t.cardAmt}</th><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th></tr></thead><tbody>` +
+      pays.slice(0, 200).map(p => { const its = p.items.length ? p.items : [null];
+        return its.map((i, k) => `<tr>${k ? '<td></td><td></td><td></td>' : `<td class="n">${p.src_row}</td><td>${p.pay_date}</td><td class="n">₩${won(p.amount)}</td>`}` +
+          (i ? `<td class="wrap">${esc(i.name)}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td>` : `<td colspan="5" class="muted">${t.noItems}${p.note ? ' · ' + esc(p.note) : ''}</td>`) + '</tr>').join(''); }).join('') +
+      (pays.length > 200 ? `<tr><td colspan="8" class="muted">${t.pvMore(won(pays.length - 200))}</td></tr>` : '') + '</tbody></table></div>' : '') +
+    (any ? `<p><button class="btn" id="xlGo">${t.importGo}</button> <button class="btn ghost" id="xlCancel">${t.cancel}</button></p>` : `<p class="muted">${t.nothingNew}</p>`);
   if (dups.length) $('xlDup').onchange = e => { x.dupOk = e.target.checked; renderPreview(); };
   if (!any) return;
   $('xlCancel').onclick = () => { pending = null; renderPreview(); };
@@ -872,8 +942,9 @@ function renderPreview() {
     try {
       let np = 0, nr = 0;
       await busy(async () => {
+        const upload_id = ok(await sb.from('uploads').insert({ file_name: x.file }).select('id').single()).id;
         for (let k = 0; k < Math.max(pays.length, 1); k += 300) {   // chunks keep each request small
-          const res = ok(await sb.rpc('import_batch', { p: { payments: pays.slice(k, k + 300).map(({ dupOf, ...p }) => p), refunds: k ? [] : x.refunds } }));
+          const res = ok(await sb.rpc('import_batch', { p: { upload_id, payments: pays.slice(k, k + 300).map(({ dupOf, ...p }) => p), refunds: k ? [] : x.refunds } }));
           np += res.payments; nr += res.refunds;
         }
       });
@@ -881,6 +952,20 @@ function renderPreview() {
       if (F.some(r => !r.payment_id)) showTab('ref');
     } catch (err) { alert(t.syncFail(err.message)); }
   };
+}
+$('xlTemplate').onclick = () => {
+  const t = T(), wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, templateSheet([t.payDate, t.cardAmt + t.vat, t.name, t.qty, t.price, t.weightCol]), 'Sheet1');
+  XLSX.writeFile(wb, `${t.tplFile}.xlsx`);
+};
+function renderUploads() {
+  const t = T(), cnt = (arr, id) => arr.filter(x => x.upload_id === id).length;
+  const rows = U.map(u => ({ ...u, p: cnt(P, u.id), r: cnt(F, u.id) })).filter(u => u.p || u.r).sort((a, b) => b.id - a.id);
+  $('upTable').innerHTML = `<thead><tr><th>${t.upTime}</th><th>${t.upFile}</th><th class="n">${t.tabPay}</th><th class="n">${t.tabRef}</th><th></th></tr></thead><tbody>` +
+    (rows.map(u => `<tr><td>${new Date(u.created_at).toLocaleString(lang === 'zh' ? 'zh-CN' : 'ko-KR')}</td><td class="wrap">${esc(u.file_name)}</td><td class="n">${won(u.p)}</td><td class="n">${won(u.r)}</td>` +
+      `<td><button class="btn danger sm" data-updel="${u.id}">${t.upDel}</button></td></tr>`).join('') || `<tr><td colspan="5" class="empty">${t.none}</td></tr>`) + '</tbody>';
+  $('upTable').querySelectorAll('[data-updel]').forEach(b => b.onclick = () => { const u = rows.find(x => x.id === +b.dataset.updel);
+    deleteFlow(t.upAsk(u.file_name, won(u.p), won(u.r)), force => sb.rpc('delete_upload', { up: u.id, force }).then(ok)); });
 }
 
 function itemRow(tbody = $('mItems')) {
@@ -981,7 +1066,7 @@ $('restoreFile').onchange = async e => {
     if (!d || d.v !== 2 || !Array.isArray(d.payments) || !Array.isArray(d.items) || !Array.isArray(d.refunds)) return alert(t.badBackup);
     if (!confirm(t.restoreAsk(won(d.payments.length), won(d.items.length), won(d.refunds.length)))) return;
     await busy(() => sb.rpc('restore_all', { data: { payments: d.payments, items: d.items, refunds: d.refunds } }).then(ok));
-    open.clear(); sel.stock.clear(); sel.done.clear();
+    open.clear(); sel.stock.clear(); sel.done.clear(); sel.pay.clear();
     await reload(); alert(t.restored);
   } catch (err) { alert(t.syncFail(err.message)); }
 };
@@ -1005,7 +1090,7 @@ function renderAll() {
   $('refundBanner').innerHTML = `<span>${t.banner(pend)}</span><button class="btn sm" id="goRef">${t.goRef}</button>`;
   if (pend) $('goRef').onclick = () => showTab('ref');
   $('nameList').innerHTML = cats().filter(Boolean).map(c => `<option value="${esc(c)}">`).join('');
-  renderPay(); renderStock(); renderDone(); renderRef(); renderMonth(); renderPreview();
+  renderPay(); renderStock(); renderDone(); renderRef(); renderMonth(); renderPreview(); renderUploads();
 }
 
 function setLang(l) {
