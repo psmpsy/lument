@@ -249,7 +249,7 @@
         <button class="btn" id="exportGo" data-i18n="confirmExport"></button>
         <button class="btn ghost" id="exportCancel" data-i18n="cancel"></button>
       </div>
-      <div class="scroll" id="stockBillsWrap"><table id="stockBills"></table></div>
+      <div class="scroll" id="stockBillsWrap"><table id="stockBills" class="seltable"></table></div>
       <div class="scroll" id="stockTableWrap"><table id="stockTable" class="seltable"></table></div>
     </div>
   </section>
@@ -618,16 +618,18 @@ function filterBar(el, key, parts) {
 }
 
 /* ---------- selectable tables: click / drag / select-all ---------- */
-function bindSelect(table, key, onChange) {
+// ids(tr): item ids a row stands for (a bill row = all its remaining stock items)
+function bindSelect(table, key, onChange, ids = tr => [+tr.dataset.id]) {
   let drag = null;
   const rows = () => [...table.querySelectorAll('tbody tr[data-id]')];
-  const setRow = (tr, on) => { const id = +tr.dataset.id; on ? sel[key].add(id) : sel[key].delete(id); tr.classList.toggle('sel', on); tr.querySelector('input').checked = on; };
+  const isOn = tr => ids(tr).every(id => sel[key].has(id));
+  const setRow = (tr, on) => { ids(tr).forEach(id => on ? sel[key].add(id) : sel[key].delete(id)); tr.classList.toggle('sel', on); tr.querySelector('input').checked = on; };
   const paint = to => { const rs = rows(), a = Math.min(drag.from, to), b = Math.max(drag.from, to); rs.forEach((tr, k) => setRow(tr, k >= a && k <= b ? drag.on : drag.before[k])); onChange(); };
   table.onpointerdown = e => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || e.target.closest('button')) return;   // the bill amount button expands, it doesn't select
     const tr = e.target.closest('tbody tr[data-id]'); if (!tr) return;
     const rs = rows();
-    drag = { from: rs.indexOf(tr), on: !sel[key].has(+tr.dataset.id), before: rs.map(r => sel[key].has(+r.dataset.id)) };
+    drag = { from: rs.indexOf(tr), on: !isOn(tr), before: rs.map(isOn) };
     paint(drag.from);
   };
   table.onpointerover = e => { if (!drag) return; const tr = e.target.closest('tbody tr[data-id]'); if (tr) paint(rows().indexOf(tr)); };
@@ -763,6 +765,7 @@ const stockSummary = its => { const by = new Map();
 const fourCols = rows => { const t = T(); return rows.map(r => ({ [t.name]: r.name, [t.qty]: r.qty, [t.price]: r.price, [t.weightCol]: r.weight })); };
 let stockCard = null;   // which stat card's detail is open
 const openStock = new Set();   // expanded bills in the stock tab's by-bill view
+const stockOf = p => (itemsByPay.get(p.id) || []).filter(i => status(i) === 'stock');
 const dateMinus = n => new Date(Date.parse(today()) - n * 864e5).toISOString().slice(0, 10);
 function showInList(patch) { Object.assign(flt.stock, patch); renderStock(); $('stockTable').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 function renderStockDetail(all) {
@@ -812,11 +815,10 @@ function renderStock(refreshBar = true) {
   if (!byBill) { itemTable($('stockTable'), 'stock', list); return stockSelChanged(list.length); }
   // by-bill view: same sel.stock item ids, a bill row toggles all of its remaining stock items
   const bills = [...new Map(list.map(i => [i.payment_id, payById.get(i.payment_id)])).values()];
-  const stockOf = p => (itemsByPay.get(p.id) || []).filter(i => status(i) === 'stock');
   const allOn = p => stockOf(p).every(i => sel.stock.has(i.id));
   $('stockBills').innerHTML = `<thead><tr><th><input type="checkbox" id="billAll" aria-label="${t.selectAll}" ${bills.length && bills.every(allOn) ? 'checked' : ''}></th><th>${t.payDate}</th><th class="n">${t.cardAmt}</th><th class="n">${t.stockItems}</th><th class="n">${t.qty}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th></tr></thead><tbody>` +
     (bills.map(p => { const its = stockOf(p), on = allOn(p);
-      return `<tr class="${on ? 'sel' : ''}"><td><input type="checkbox" data-bsel="${p.id}" ${on ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td>` +
+      return `<tr data-id="${p.id}" class="${on ? 'sel' : ''}"><td><input type="checkbox" data-bsel="${p.id}" ${on ? 'checked' : ''} aria-label="${t.pick}"></td><td>${p.pay_date}</td>` +
         `<td class="n"><button class="linkbtn" data-bopen="${p.id}" aria-expanded="${openStock.has(p.id)}">₩${won(p.amount)}</button></td>` +
         `<td class="n">${won(its.length)}</td><td class="n">${won(sumBy(its, i => i.qty))}</td><td class="n">₩${won(sumBy(its, i => i.qty * i.price))}</td><td class="n">${kg(sumBy(its, i => i.weight))}</td></tr>` +
         (openStock.has(p.id) ? `<tr class="sub"><td colspan="7">${billItems(itemsByPay.get(p.id) || [])}</td></tr>` : ''); }).join('') ||
@@ -844,6 +846,7 @@ function doneSelChanged(shown = $('doneTable').querySelectorAll('tbody tr[data-i
   $('doneSel').innerHTML = `${t.shown(won(shown))} · ` + t.selSum(won(s.n), won(s.q), won(s.a), kg(s.w));
 }
 bindSelect($('stockTable'), 'stock', () => stockSelChanged());
+bindSelect($('stockBills'), 'stock', () => stockSelChanged($('stockBills').querySelectorAll('tbody tr[data-id]').length), tr => stockOf(payById.get(+tr.dataset.id)).map(i => i.id));
 bindSelect($('doneTable'), 'done', () => doneSelChanged());
 
 $('stockExport').onclick = () => { if (!sel.stock.size) return alert(T().needSel); $('expDate').value ||= today(); $('exportPanel').hidden = false; stockSelChanged(); };
