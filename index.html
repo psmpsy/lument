@@ -401,6 +401,10 @@ const I18N = {
     status: '상태', exportDate: '수출일', row: '엑셀 행', items: '상품', search: '상품명 검색', from: '부터', to: '까지',
     sort: '정렬', oldFirst: '오래된 구매일 먼저', newFirst: '최근 구매일 먼저', all: '전체', none: '없음', selectAll: '전체 선택', clear: '선택 해제',
     batch: '수출 배치', needExpDate: '먼저 수출일이나 수출 배치를 골라주세요', customsXlsx: '통관 신고 Excel 다운로드', shCustoms: '통관신고',
+    amtMismatch: d => `카드 결제 총액과 상품 금액 합계가 일치하지 않습니다. 차액: ₩${d}. 입력 내용을 확인해 주세요.`,
+    saveAnyway: '확인을 누르면 그대로 저장하고, 취소를 누르면 돌아가서 고칠 수 있어요.',
+    misTitle: n => `카드 결제 총액과 상품 금액 합계가 다른 결제건 ${n}건 (아래 표에 빨간색으로 표시)`,
+    misRow: (r, d, a, s, g) => `${r}행 ${d}: 카드 ₩${a} / 상품 합계 ₩${s} / 차액 ₩${g}`,
     view: '보기', vBill: '결제건별 (결제건 전체 수출)', vItem: '상품별 (원하는 상품만 수출)', stockItems: '남은 재고 상품',
     stockSum: '전체 재고 요약', shSum: '재고요약', billXlsx: '이 결제건 Excel', shBill: '결제건명세',
     st: { stock: '재고', exported: '수출 완료', returned: '반품', canceled: '취소됨' },
@@ -469,6 +473,10 @@ const I18N = {
     status: '状态', exportDate: '出口日期', row: 'Excel 行', items: '商品', search: '搜索品名', from: '起', to: '止',
     sort: '排序', oldFirst: '采购日期从早到晚', newFirst: '采购日期从晚到早', all: '全部', none: '无', selectAll: '全选', clear: '取消选择',
     batch: '出口批次', needExpDate: '请先选择出口日期或出口批次', customsXlsx: '下载海关申报 Excel', shCustoms: '海关申报',
+    amtMismatch: d => `刷卡总额与商品金额合计不一致。差额：₩${d}。请检查输入内容。`,
+    saveAnyway: '点「确定」按原样保存，点「取消」返回修改。',
+    misTitle: n => `刷卡总额与商品金额合计不一致的付款 ${n} 笔（下表中红色标出）`,
+    misRow: (r, d, a, s, g) => `第 ${r} 行 ${d}：刷卡 ₩${a} / 商品合计 ₩${s} / 差额 ₩${g}`,
     view: '查看方式', vBill: '按账单（整单出口）', vItem: '按商品（选择出口）', stockItems: '剩余库存商品',
     stockSum: '全部库存汇总', shSum: '库存汇总', billXlsx: '导出此账单 Excel', shBill: '账单明细',
     st: { stock: '库存', exported: '已出口', returned: '退货', canceled: '已取消' },
@@ -716,6 +724,8 @@ function renderPay(refreshBar = true) {
     const id = +b.dataset.fillsave, errEl = $('payTable').querySelector(`[data-fillerr="${id}"]`), r = readItems($('payTable').querySelector(`tbody[data-fill="${id}"]`));
     if (r.bad) return errEl.textContent = t.mErrItem(r.bad);
     if (!r.items.length) return errEl.textContent = t.fillNeed;
+    const gap = amtGap(payById.get(id).amount, [...(itemsByPay.get(id) || []), ...r.items]);
+    if (gap !== null) { errEl.textContent = t.amtMismatch(won(Math.abs(gap))); if (!confirm(t.amtMismatch(won(Math.abs(gap))) + '\n\n' + t.saveAnyway)) return; }
     try { await busy(() => sb.from('items').insert(r.items.map(i => ({ ...i, payment_id: id }))).then(ok)); await reload(); alert(t.saved); }
     catch (err) { errEl.textContent = t.syncFail(err.message); }
   });
@@ -860,7 +870,11 @@ $('doneUndo').onclick = async () => {
 };
 const itemXlsxRows = (list, done) => { const t = T(); return list.map(i => { const p = payById.get(i.payment_id);
   return { ...(done ? { [t.exportDate]: i.exported_on, [t.exportRef]: i.export_ref || '' } : { [t.ageCol]: daysSince(p.pay_date) }), [t.payDate]: p.pay_date, [t.cardAmt]: p.amount, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight }; }); };
-$('stockXlsx').onclick = () => xlsxOut(itemXlsxRows(itemList('stock'), false), T().shStock);
+// grouped by payment id (not date/amount): date + card total only on a bill's first row, blank row between bills
+$('stockXlsx').onclick = () => { const t = T(), by = new Map();
+  itemList('stock').forEach(i => (by.get(i.payment_id) || by.set(i.payment_id, []).get(i.payment_id)).push(i));
+  xlsxOut([...by].flatMap(([pid, its], k) => { const p = payById.get(pid);
+    return [...(k ? [{}] : []), ...its.map((i, n) => ({ [t.payDate]: n ? '' : p.pay_date, [t.cardAmt]: n ? '' : p.amount, [t.name]: i.name, [t.qty]: i.qty, [t.price]: i.price, [t.amt]: i.qty * i.price, [t.weightCol]: i.weight }))]; }), t.shStock); };
 $('doneXlsx').onclick = () => xlsxOut(itemXlsxRows(itemList('done'), true), T().shDone);
 $('doneCustoms').onclick = () => {
   const t = T(), f = flt.done;
@@ -957,14 +971,15 @@ function renderPreview() {
   const t = T(), x = pending;
   if (!x) { $('xlPreview').innerHTML = ''; return; }
   const dups = x.payments.filter(p => p.dupOf), pays = x.dupOk ? x.payments : x.payments.filter(p => !p.dupOf);
-  const any = pays.length || x.refunds.length;
+  const any = pays.length || x.refunds.length, mis = pays.filter(p => amtGap(p.amount, p.items) !== null);
   $('xlPreview').innerHTML = `<p>${t.preview(won(pays.length), won(x.refunds.length), won(x.skipP), won(x.skipR))}</p>` +
+    (mis.length ? `<div class="warnlist" style="padding-left:14px"><b>${t.misTitle(won(mis.length))}</b><ul style="margin:6px 0;padding-left:18px">${mis.map(p => `<li>${esc(t.misRow(p.src_row, p.pay_date, won(p.amount), won(sumBy(p.items, i => i.qty * i.price)), won(Math.abs(amtGap(p.amount, p.items)))))}</li>`).join('')}</ul></div>` : '') +
     (dups.length ? `<div class="warnlist" style="padding-left:14px"><b>${t.dupTitle(won(dups.length))}</b><ul style="margin:6px 0;padding-left:18px">${dups.map(p => `<li>${esc(t.dupRow(p.src_row, p.pay_date, won(p.amount), p.dupOf.upload_id ? U.find(u => u.id === p.dupOf.upload_id)?.file_name || '' : t.manualEntry))}</li>`).join('')}</ul>
       <label><input type="checkbox" id="xlDup" ${x.dupOk ? 'checked' : ''}> ${t.dupInclude}</label></div>` : '') +
     (x.warn.length ? `<ul class="warnlist">${x.warn.map(w => `<li>${esc(T().w[w.k](w))}</li>`).join('')}</ul>` : '') +
     (pays.length ? `<p><b>${t.pvTitle}</b></p><div class="scroll" style="max-height:46vh"><table><thead><tr><th class="n">${t.row}</th><th>${t.payDate}</th><th class="n">${t.cardAmt}</th><th>${t.name}</th><th class="n">${t.qty}</th><th class="n">${t.price}</th><th class="n">${t.amt}</th><th class="n">${t.weightCol}</th></tr></thead><tbody>` +
       pays.slice(0, 200).map(p => { const its = p.items.length ? p.items : [null];
-        return its.map((i, k) => `<tr>${k ? '<td></td><td></td><td></td>' : `<td class="n">${p.src_row}</td><td>${p.pay_date}</td><td class="n">₩${won(p.amount)}</td>`}` +
+        return its.map((i, k) => `<tr class="${mis.includes(p) ? 'ret' : ''}">${k ? '<td></td><td></td><td></td>' : `<td class="n">${p.src_row}</td><td>${p.pay_date}</td><td class="n">₩${won(p.amount)}</td>`}` +
           (i ? `<td class="wrap">${esc(i.name)}</td><td class="n">${won(i.qty)}</td><td class="n">₩${won(i.price)}</td><td class="n">₩${won(i.qty * i.price)}</td><td class="n">${kg(i.weight)}</td>` : `<td colspan="5" class="muted">${t.noItems}${p.note ? ' · ' + esc(p.note) : ''}</td>`) + '</tr>').join(''); }).join('') +
       (pays.length > 200 ? `<tr><td colspan="8" class="muted">${t.pvMore(won(pays.length - 200))}</td></tr>` : '') + '</tbody></table></div>' : '') +
     (any ? `<p><button class="btn" id="xlGo">${t.importGo}</button> <button class="btn ghost" id="xlCancel">${t.cancel}</button></p>` : `<p class="muted">${t.nothingNew}</p>`);
@@ -972,6 +987,7 @@ function renderPreview() {
   if (!any) return;
   $('xlCancel').onclick = () => { pending = null; renderPreview(); };
   $('xlGo').onclick = async () => {
+    if (mis.length && !confirm(t.misTitle(won(mis.length)) + '\n\n' + t.saveAnyway)) return;
     try {
       let np = 0, nr = 0;
       await busy(async () => {
@@ -1008,6 +1024,8 @@ function itemRow(tbody = $('mItems')) {
   tbody.append(tr);
 }
 // returns { items } or { bad: 1-based row number }; fully blank rows are skipped
+// card total − Σ qty×price; null when there are no items to compare (rounding under ₩1 ignored)
+const amtGap = (amount, items) => { if (!items.length) return null; const g = amount - sumBy(items, i => i.qty * i.price); return Math.abs(g) < 1 ? null : g; };
 function readItems(tbody) {
   const items = [], trs = [...tbody.children];
   for (let k = 0; k < trs.length; k++) {
@@ -1028,6 +1046,8 @@ $('manForm').onsubmit = async e => {
   if ($('mAmt').value === '' || !isFinite(amt)) return err(t.mErrAmt);
   const { items, bad } = readItems($('mItems'));
   if (bad) return err(t.mErrItem(bad));
+  const gap = amt >= 0 ? amtGap(amt, items) : null;
+  if (gap !== null) { err(t.amtMismatch(won(Math.abs(gap)))); if (!confirm(t.amtMismatch(won(Math.abs(gap))) + '\n\n' + t.saveAnyway)) return; }
   const note = $('mNote').value.trim();
   const body = amt < 0 ? { refunds: [{ tx_date: date, amount: amt, note }] } : { payments: [{ pay_date: date, amount: amt, note, items }] };
   try {
